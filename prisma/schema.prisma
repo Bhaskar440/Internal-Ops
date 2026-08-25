@@ -1,0 +1,626 @@
+// Portfolio Ops — full data model (spec §48).
+//
+// Scope note: every table from §48 is defined here up front, including compensation,
+// payroll and audit, so that adding payroll later never forces a schema rewrite
+// (spec closing principle). Phases 1-5 only build services/UI for the core chain:
+//   Person -> Venture -> Task -> TimeEntry -> DailyLog -> Approval
+//
+// Conventions:
+//   - snake_case columns via @map; PascalCase models mapped with @@map.
+//   - Money is Decimal(18,4), never Float (§36).
+//   - Durations are INTEGER minutes/seconds, never Float hours (§15).
+//   - Soft delete via archived_at/deleted_at; time, payroll and audit rows are
+//     never hard-deleted (§47).
+
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["partialIndexes"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum GlobalRole {
+  SUPER_ADMIN
+  USER
+}
+
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum EmploymentType {
+  EMPLOYEE
+  FREELANCER
+  CONTRACTOR
+}
+
+enum VentureAccessRole {
+  MANAGER
+  MEMBER
+}
+
+enum TaskStatus {
+  BACKLOG
+  IN_PROGRESS
+  REVIEW
+  DONE
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TimeEntrySource {
+  TIMER
+  MANUAL
+  ADMIN_ADJUSTMENT
+}
+
+/// Per-entry flag. NOT the authority on approval — DailyLog.status is (see plan,
+/// "Open items"). This exists to mark anomalies: over-cap timers, post-cutoff
+/// admin corrections.
+enum TimeEntryApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  NEEDS_REVIEW
+}
+
+enum AttendanceStatus {
+  PRESENT
+  REMOTE
+  ON_LEAVE
+  ABSENT
+}
+
+enum DailyLogStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  LOCKED
+}
+
+enum HardwareAssetStatus {
+  AVAILABLE
+  ISSUED
+  IN_REPAIR
+  RETIRED
+  LOST
+}
+
+enum DocumentStatus {
+  PENDING
+  SUBMITTED
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum PayType {
+  HOURLY
+  MONTHLY_FIXED
+  PER_TASK
+}
+
+/// §38: Option A pays the flat monthly rate; Option B prorates by attendance days.
+/// Default is FIXED_FULL, stored per agreement so individuals can differ (§35).
+enum ProrationPolicy {
+  FIXED_FULL
+  ATTENDANCE_PRORATED
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  REVIEW
+  LOCKED
+  PAID
+  VOID
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+// ---------------------------------------------------------------------------
+// Identity & people
+// ---------------------------------------------------------------------------
+
+model User {
+  id             String        @id @default(uuid(7))
+  name           String
+  email          String        @unique
+  phone          String?
+  /// Auth.js credentials hash. Null for invited users who have not set a password.
+  passwordHash   String?       @map("password_hash")
+  globalRole     GlobalRole    @default(USER) @map("global_role")
+  /// Governs ACCESS. Payroll eligibility is governed by Person.endDate instead.
+  accountStatus  AccountStatus @default(PENDING) @map("account_status")
+  authProviderId String?       @map("auth_provider_id")
+  emailVerified  DateTime?     @map("email_verified")
+  image          String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  person    Person?
+  accounts  Account[]
+  sessions  Session[]
+  auditLogs AuditLog[] @relation("AuditActor")
+
+  @@index([accountStatus])
+  @@index([createdAt])
+  @@map("users")
+}
+
+/// Auth.js adapter tables.
+model Account {
+  id                String  @id @default(uuid(7))
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid(7))
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+/// Employment identity. Employment type is orthogonal to access role (§5):
+/// a FREELANCER can hold a MANAGER membership.
+model Person {
+  id             String         @id @default(uuid(7))
+  userId         String         @unique @map("user_id")
+  employmentType EmploymentType @map("employment_type")
+  startDate      DateTime?      @map("start_date") @db.Date
+  /// Authority on PAYROLL ELIGIBILITY. Access is governed by User.accountStatus.
+  endDate        DateTime?      @map("end_date") @db.Date
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  archivedAt     DateTime?      @map("archived_at")
+
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberships           VentureMembership[]
+  taskAssignments       TaskAssignee[]
+  timeEntries           TimeEntry[]
+  dailyLogs             DailyLog[]
+  assetAssignments      AssetAssignment[]
+  documents             DocumentRecord[]
+  compensationAgreements CompensationAgreement[]
+  payrollLines          PayrollLine[]
+  payrollAdjustments    PayrollAdjustment[]
+
+  @@index([employmentType])
+  @@index([archivedAt])
+  @@map("people")
+}
+
+// ---------------------------------------------------------------------------
+// Ventures
+// ---------------------------------------------------------------------------
+
+model Venture {
+  id       String @id @default(uuid(7))
+  name     String
+  slug     String @unique
+  tagColor String @default("#2563eb") @map("tag_color")
+  /// IANA zone, e.g. Asia/Kolkata. Effectively immutable once time entries exist
+  /// — changing it would invalidate historical business_date values.
+  timezone String @default("Asia/Kolkata")
+  active   Boolean @default(true)
+  /// ISO weekday numbers, 1=Mon..7=Sun. Default Mon-Fri.
+  workingDays Int[] @default([1, 2, 3, 4, 5]) @map("working_days")
+  /// §29: hours after the business day during which an employee may still edit.
+  dailyLogEditWindowHours Int @default(48) @map("daily_log_edit_window_hours")
+  defaultCurrency         String @default("INR") @map("default_currency")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+
+  memberships VentureMembership[]
+  tasks       Task[]
+  timeEntries TimeEntry[]
+  dailyLogs   DailyLog[]
+
+  @@index([active])
+  @@index([archivedAt])
+  @@map("ventures")
+}
+
+/// §11: many-to-many. Never Person.venture_id.
+model VentureMembership {
+  id         String            @id @default(uuid(7))
+  ventureId  String            @map("venture_id")
+  personId   String            @map("person_id")
+  accessRole VentureAccessRole @default(MEMBER) @map("access_role")
+  joinedAt   DateTime          @default(now()) @map("joined_at")
+  leftAt     DateTime?         @map("left_at")
+
+  venture Venture @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  person  Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([ventureId, personId])
+  @@index([personId])
+  @@index([ventureId, accessRole])
+  @@map("venture_memberships")
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+model Task {
+  id          String       @id @default(uuid(7))
+  ventureId   String       @map("venture_id")
+  title       String
+  description String?
+  status      TaskStatus   @default(BACKLOG)
+  priority    TaskPriority @default(MEDIUM)
+  /// §15: INTEGER minutes, never Float hours. 8h = 480. Required (§17).
+  estimatedMinutes Int      @map("estimated_minutes")
+  dueDate     DateTime?    @map("due_date") @db.Date
+  /// Kanban ordering within a column.
+  boardOrder  Int          @default(0) @map("board_order")
+  /// §39: optional fixed fee for per-task freelancers.
+  fixedFee    Decimal?     @map("fixed_fee") @db.Decimal(18, 4)
+  feeCurrency String?      @map("fee_currency")
+  createdBy   String       @map("created_by")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  startedAt   DateTime?    @map("started_at")
+  completedAt DateTime?    @map("completed_at")
+  archivedAt  DateTime?    @map("archived_at")
+
+  // NOTE: there is deliberately NO actual_hours column (§23). Actual time is
+  // always SUM(TimeEntry.duration_seconds).
+
+  venture     Venture             @relation(fields: [ventureId], references: [id], onDelete: Restrict)
+  assignees   TaskAssignee[]
+  timeEntries TimeEntry[]
+  statusHistory TaskStatusHistory[]
+
+  @@index([ventureId, status])
+  @@index([status])
+  @@index([dueDate])
+  @@index([createdAt])
+  @@index([archivedAt])
+  @@map("tasks")
+}
+
+/// §16: multiple assignees. Never Task.assignee_id.
+model TaskAssignee {
+  id         String   @id @default(uuid(7))
+  taskId     String   @map("task_id")
+  personId   String   @map("person_id")
+  assignedBy String   @map("assigned_by")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, personId])
+  @@index([personId])
+  @@map("task_assignees")
+}
+
+/// §18: every transition preserves old/new status, actor and timestamp.
+model TaskStatusHistory {
+  id         String     @id @default(uuid(7))
+  taskId     String     @map("task_id")
+  fromStatus TaskStatus? @map("from_status")
+  toStatus   TaskStatus @map("to_status")
+  changedBy  String     @map("changed_by")
+  changedAt  DateTime   @default(now()) @map("changed_at")
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, changedAt])
+  @@map("task_status_history")
+}
+
+// ---------------------------------------------------------------------------
+// Time
+// ---------------------------------------------------------------------------
+
+/// §19-23: the single source of truth for time. Timer and manual entries produce
+/// the same object. duration_seconds is authoritative for all summation
+/// regardless of source.
+model TimeEntry {
+  id         String          @id @default(uuid(7))
+  taskId     String?         @map("task_id")
+  personId   String          @map("person_id")
+  ventureId  String          @map("venture_id")
+  /// Linked eagerly at creation (including timer START), so there is no orphan
+  /// window and edit-window/lock checks always have a log to consult.
+  dailyLogId String?         @map("daily_log_id")
+  source     TimeEntrySource
+  startedAt  DateTime        @map("started_at")
+  /// NULL means the timer is running. The partial unique index below allows at
+  /// most one such row per person.
+  endedAt    DateTime?       @map("ended_at")
+  /// Computed server-side from DB time; never trusted from the browser (§21).
+  durationSeconds Int?       @map("duration_seconds")
+  /// Derived from startedAt in the venture's timezone, stored as a DATE label.
+  /// A timer spanning midnight stays ONE row on the START date (see plan).
+  businessDate DateTime      @map("business_date") @db.Date
+  note         String?
+  approvalStatus TimeEntryApprovalStatus @default(PENDING) @map("approval_status")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  task     Task?     @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  person   Person    @relation(fields: [personId], references: [id], onDelete: Restrict)
+  venture  Venture   @relation(fields: [ventureId], references: [id], onDelete: Restrict)
+  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
+
+  /// §20/§49 THE critical constraint: at most one running timer per person,
+  /// enforced in the database, not just the service layer. Requires the
+  /// partialIndexes preview feature. The predicate names the DB column.
+  @@unique([personId], where: raw("\"ended_at\" IS NULL"), map: "one_active_timer_per_person")
+  @@index([taskId])
+  @@index([personId, businessDate])
+  @@index([ventureId, businessDate])
+  @@index([businessDate])
+  @@index([dailyLogId])
+  @@index([createdAt])
+  @@map("time_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Daily logs
+// ---------------------------------------------------------------------------
+
+/// §26/§27: owns attendance and workflow ONLY. Deliberately has no total_hours
+/// column — totals are always a projection over TimeEntry.
+model DailyLog {
+  id               String           @id @default(uuid(7))
+  personId         String           @map("person_id")
+  ventureId        String           @map("venture_id")
+  businessDate     DateTime         @map("business_date") @db.Date
+  attendanceStatus AttendanceStatus @default(PRESENT) @map("attendance_status")
+  status           DailyLogStatus   @default(DRAFT)
+  generalNote      String?          @map("general_note")
+  submittedAt      DateTime?        @map("submitted_at")
+  approvedAt       DateTime?        @map("approved_at")
+  approvedBy       String?          @map("approved_by")
+  rejectionReason  String?          @map("rejection_reason")
+  lockedAt         DateTime?        @map("locked_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  person      Person      @relation(fields: [personId], references: [id], onDelete: Restrict)
+  venture     Venture     @relation(fields: [ventureId], references: [id], onDelete: Restrict)
+  timeEntries TimeEntry[]
+
+  /// §26/§49: one log per person + venture + business date.
+  @@unique([personId, ventureId, businessDate])
+  @@index([ventureId, businessDate, status])
+  @@index([status])
+  @@index([businessDate])
+  @@map("daily_logs")
+}
+
+// ---------------------------------------------------------------------------
+// HR — hardware & documents (schema only in phases 1-5)
+// ---------------------------------------------------------------------------
+
+/// §13: assets are reusable and keep full assignment history.
+model HardwareAsset {
+  id           String              @id @default(uuid(7))
+  itemName     String              @map("item_name")
+  assetTag     String?             @unique @map("asset_tag")
+  serialNumber String?             @map("serial_number")
+  status       HardwareAssetStatus @default(AVAILABLE)
+  notes        String?
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+
+  assignments AssetAssignment[]
+
+  @@index([status])
+  @@map("hardware_assets")
+}
+
+model AssetAssignment {
+  id             String    @id @default(uuid(7))
+  assetId        String    @map("asset_id")
+  personId       String    @map("person_id")
+  issuedAt       DateTime  @map("issued_at")
+  issuedBy       String    @map("issued_by")
+  issueCondition String?   @map("issue_condition")
+  returnedAt     DateTime? @map("returned_at")
+  returnedTo     String?   @map("returned_to")
+  returnCondition String?  @map("return_condition")
+
+  asset  HardwareAsset @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  person Person        @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  @@index([assetId])
+  @@index([personId])
+  @@map("asset_assignments")
+}
+
+/// §14: metadata + external link only. No blob storage in MVP.
+model DocumentRecord {
+  id                    String         @id @default(uuid(7))
+  personId              String         @map("person_id")
+  docType               String         @map("doc_type")
+  status                DocumentStatus @default(PENDING)
+  expiryDate            DateTime?      @map("expiry_date") @db.Date
+  externalReferenceLink String?        @map("external_reference_link")
+  notes                 String?
+  verifiedBy            String?        @map("verified_by")
+  verifiedAt            DateTime?      @map("verified_at")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@index([personId])
+  @@index([status])
+  @@index([expiryDate])
+  @@map("document_records")
+}
+
+// ---------------------------------------------------------------------------
+// Compensation & payroll (schema only in phases 1-5 — no services/UI yet)
+// ---------------------------------------------------------------------------
+
+/// §35: rates change over time; historical payroll must use the old rate.
+model CompensationAgreement {
+  id              String          @id @default(uuid(7))
+  personId        String          @map("person_id")
+  payType         PayType         @map("pay_type")
+  /// ISO 4217 code (§36).
+  currency        String
+  rate            Decimal         @db.Decimal(18, 4)
+  effectiveFrom   DateTime        @map("effective_from") @db.Date
+  effectiveTo     DateTime?       @map("effective_to") @db.Date
+  prorationPolicy ProrationPolicy @default(FIXED_FULL) @map("proration_policy")
+  createdBy       String          @map("created_by")
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  @@index([personId, effectiveFrom])
+  @@map("compensation_agreements")
+}
+
+model PayrollRun {
+  id          String           @id @default(uuid(7))
+  periodStart DateTime         @map("period_start") @db.Date
+  periodEnd   DateTime         @map("period_end") @db.Date
+  status      PayrollRunStatus @default(DRAFT)
+  generatedAt DateTime?        @map("generated_at")
+  generatedBy String?          @map("generated_by")
+  lockedAt    DateTime?        @map("locked_at")
+  lockedBy    String?          @map("locked_by")
+  voidReason  String?          @map("void_reason")
+  notes       String?
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  lines PayrollLine[]
+
+  @@index([status])
+  @@index([periodStart, periodEnd])
+  @@map("payroll_runs")
+}
+
+/// §42: stores every value used in the calculation so a later rate change cannot
+/// alter historical payroll.
+model PayrollLine {
+  id               String        @id @default(uuid(7))
+  payrollRunId     String        @map("payroll_run_id")
+  personId         String        @map("person_id")
+  payTypeSnapshot  PayType       @map("pay_type_snapshot")
+  currency         String
+  rateSnapshot     Decimal       @map("rate_snapshot") @db.Decimal(18, 4)
+  approvedMinutes  Int           @map("approved_minutes")
+  eligibleDays     Int?          @map("eligible_days")
+  workingDays      Int?          @map("working_days")
+  computedPay      Decimal       @map("computed_pay") @db.Decimal(18, 4)
+  paymentStatus    PaymentStatus @default(UNPAID) @map("payment_status")
+  paidAt           DateTime?     @map("paid_at")
+  paidBy           String?       @map("paid_by")
+  paymentReference String?       @map("payment_reference")
+
+  run    PayrollRun @relation(fields: [payrollRunId], references: [id], onDelete: Restrict)
+  person Person     @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  sourceAdjustments  PayrollAdjustment[] @relation("AdjustmentSource")
+  settledAdjustments PayrollAdjustment[] @relation("AdjustmentSettled")
+
+  @@unique([payrollRunId, personId])
+  @@index([personId])
+  @@index([paymentStatus])
+  @@map("payroll_lines")
+}
+
+/// §43: already-paid payroll is never rewritten; corrections settle forward.
+model PayrollAdjustment {
+  id                  String   @id @default(uuid(7))
+  personId            String   @map("person_id")
+  sourcePayrollLineId String?  @map("source_payroll_line_id")
+  amount              Decimal  @db.Decimal(18, 4)
+  currency            String
+  reason              String
+  createdBy           String   @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+  settledPayrollLineId String? @map("settled_payroll_line_id")
+
+  person       Person       @relation(fields: [personId], references: [id], onDelete: Restrict)
+  sourceLine   PayrollLine? @relation("AdjustmentSource", fields: [sourcePayrollLineId], references: [id], onDelete: Restrict)
+  settledLine  PayrollLine? @relation("AdjustmentSettled", fields: [settledPayrollLineId], references: [id], onDelete: Restrict)
+
+  @@index([personId])
+  @@map("payroll_adjustments")
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+/// §46: written inside the same transaction as the change it describes.
+model AuditLog {
+  id          String   @id @default(uuid(7))
+  actorUserId String?  @map("actor_user_id")
+  action      String
+  entityType  String   @map("entity_type")
+  entityId    String   @map("entity_id")
+  beforeJson  Json?    @map("before_json")
+  afterJson   Json?    @map("after_json")
+  reason      String?
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
