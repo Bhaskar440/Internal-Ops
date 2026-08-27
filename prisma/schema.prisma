@@ -139,6 +139,38 @@ enum PaymentStatus {
 // ---------------------------------------------------------------------------
 // Identity & people
 // ---------------------------------------------------------------------------
+/// Failed sign-in attempts, for rate limiting (§63). Stored in the database so
+/// the limit survives restarts and holds across multiple instances.
+model LoginAttempt {
+  id         String   @id @default(uuid(7))
+  email      String
+  ipAddress  String?  @map("ip_address")
+  successful Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@index([createdAt])
+  @@map("login_attempts")
+}
+
+/// Single-use password reset tokens (§63). Only a hash is stored, so a database
+/// leak does not hand out working reset links.
+model PasswordResetToken {
+  id        String    @id @default(uuid(7))
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
 
 model User {
   id             String        @id @default(uuid(7))
@@ -156,10 +188,11 @@ model User {
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
 
-  person    Person?
-  accounts  Account[]
-  sessions  Session[]
-  auditLogs AuditLog[] @relation("AuditActor")
+  person         Person?
+  accounts       Account[]
+  sessions       Session[]
+  auditLogs      AuditLog[]           @relation("AuditActor")
+  passwordResets PasswordResetToken[]
 
   @@index([accountStatus])
   @@index([createdAt])

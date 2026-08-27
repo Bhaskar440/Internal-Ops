@@ -26,7 +26,16 @@ export default async function LoginPage() {
           <LoginForm />
         </div>
 
-        <p className="mt-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="mt-4 text-center text-sm">
+          <a
+            href="/forgot-password"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
+            Forgot your password?
+          </a>
+        </p>
+
+        <p className="mt-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
           Accounts are created by an administrator.
         </p>
       </div>
