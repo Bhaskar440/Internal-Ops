@@ -22,7 +22,9 @@ const NAV: NavItem[] = [
   { href: "/people", label: "People" },
   { href: "/reports", label: "Reports", managerOnly: true },
   { href: "/payroll", label: "Payroll", adminOnly: true },
+  { href: "/hr", label: "HR", adminOnly: true },
   { href: "/ventures", label: "Ventures", adminOnly: true },
+  { href: "/audit", label: "Audit", adminOnly: true },
 ];
 
 export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
