@@ -8,6 +8,8 @@ import { isAppError } from "@/lib/errors/appError";
 import { Card, PageHeader, Badge, EmptyState } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { setMembershipAction, removeMembershipAction } from "../actions";
+import { CompensationPanel } from "@/components/forms/CompensationPanel";
+import { listAgreements } from "@/modules/compensation/compensation.service";
 import { ACCESS_ROLES } from "@/modules/people/person.schema";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +39,10 @@ export default async function PersonDetailPage({
 
   const admin = isSuperAdmin(actor);
   const allVentures = await listVentures(actor);
+
+  // Compensation is fetched ONLY for a Super Admin. A manager's request never
+  // loads it, so pay data cannot reach the browser at all (§52).
+  const agreements = admin ? await listAgreements(actor, person.personId) : [];
 
   // Ventures the actor may assign into and where this person is not yet a member.
   const assignedIds = new Set(person.ventures.map((v) => v.id));
@@ -81,10 +87,11 @@ export default async function PersonDetailPage({
               )}
             </dl>
 
-            <p className="mt-6 border-t border-zinc-200 pt-4 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-              Compensation is managed separately and is visible only to authorized
-              administrators.
-            </p>
+            {!admin && (
+              <p className="mt-6 border-t border-zinc-200 pt-4 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                Compensation is visible only to authorized administrators.
+              </p>
+            )}
           </div>
         </Card>
 
@@ -210,6 +217,18 @@ export default async function PersonDetailPage({
             )}
           </div>
         </Card>
+
+        {admin && (
+          <Card className="lg:col-span-3">
+            <div className="p-6">
+              <CompensationPanel
+                personId={person.personId}
+                agreements={agreements}
+                defaultCurrency={allVentures[0]?.defaultCurrency ?? "INR"}
+              />
+            </div>
+          </Card>
+        )}
       </div>
     </>
   );

@@ -190,7 +190,13 @@ export async function getPerson(actor: Actor, personId: string): Promise<PersonS
  * link; the admin never chooses it, and a self-registered person can never set
  * their own pay rate.
  */
-export async function createPerson(actor: Actor, input: CreatePersonInput) {
+export async function createPerson(
+  actor: Actor,
+  input: Omit<CreatePersonInput, "phone" | "startDate"> & {
+    phone?: string;
+    startDate?: string;
+  },
+) {
   const existing = await prisma.user.findUnique({
     where: { email: input.email },
     select: { id: true },

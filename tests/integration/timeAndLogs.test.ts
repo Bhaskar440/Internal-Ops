@@ -5,7 +5,16 @@ import { getMyDay, submitLog, approveLog, getLog } from "@/modules/dailyLogs/dai
 import { createTask, changeTaskStatus, listTasks } from "@/modules/tasks/task.service";
 import type { Actor, ActorWithVenture } from "@/lib/permissions/types";
 import { isAppError } from "@/lib/errors/appError";
-import { fromPrismaDate } from "@/lib/timezone/businessDate";
+import { fromPrismaDate, currentBusinessDate } from "@/lib/timezone/businessDate";
+
+/** Today in the venture timezone — fixed dates would fall outside the 48h
+ *  edit window as soon as the clock rolls past midnight. */
+const TODAY = currentBusinessDate("Asia/Kolkata");
+/** Yesterday, still inside a 48h edit window, for tests needing a second day. */
+const YESTERDAY = currentBusinessDate(
+  "Asia/Kolkata",
+  new Date(Date.now() - 24 * 3600 * 1000),
+);
 
 /**
  * The core-chain invariants, tested against a real database:
@@ -262,7 +271,7 @@ describe("task actual hours come from time entries (§23)", () => {
 
 describe("approval lifecycle (§28, §31)", () => {
   it("submits, approves, and then locks the day against employee edits", async () => {
-    const date = "2026-08-25";
+    const date = TODAY;
     const employee = ventureActor(baseActor(), "MEMBER");
     await saveManualEntry(employee, { businessDate: date, minutes: 240 });
 
@@ -292,7 +301,7 @@ describe("approval lifecycle (§28, §31)", () => {
   });
 
   it("refuses to approve your own timesheet", async () => {
-    const date = "2026-08-26";
+    const date = YESTERDAY;
     const manager = ventureActor(
       baseActor({
         userId: ids.mgrUser,
@@ -324,7 +333,14 @@ describe("approval lifecycle (§28, §31)", () => {
   });
 
   it("blocks submission when attendance conflicts with logged hours (§30)", async () => {
-    const date = "2026-08-27";
+    const date = TODAY;
+
+    // An earlier test approved this day; reopen it so this one starts clean.
+    await prisma.dailyLog.updateMany({
+      where: { personId: ids.empPerson, ventureId: ids.venture },
+      data: { status: "DRAFT", approvedAt: null, approvedBy: null, submittedAt: null },
+    });
+
     const employee = ventureActor(baseActor(), "MEMBER");
     await saveManualEntry(employee, { businessDate: date, minutes: 360 });
 

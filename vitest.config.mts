@@ -10,6 +10,10 @@ export default defineConfig({
     // Integration tests share one Postgres database, so they must not run in
     // parallel against each other.
     fileParallelism: false,
+    // Each test file opens its own pooled connection; connecting under load can
+    // exceed the 10s default.
+    hookTimeout: 30000,
+    testTimeout: 30000,
     setupFiles: ["tests/setup.ts"],
   },
   resolve: {
