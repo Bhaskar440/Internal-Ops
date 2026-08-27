@@ -1,0 +1,378 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Card";
+import { formatMinutes } from "@/lib/money/efficiency";
+import {
+  startTimerAction,
+  stopTimerAction,
+  saveManualEntryAction,
+  deleteEntryAction,
+  updateLogAction,
+  submitLogAction,
+} from "@/app/(admin)/my-day/actions";
+
+export type DayEntry = {
+  id: string;
+  taskId: string | null;
+  taskTitle: string | null;
+  source: string;
+  durationMinutes: number;
+  note: string | null;
+  running: boolean;
+  approvalStatus: string;
+};
+
+export type DaySection = {
+  logId: string;
+  ventureId: string;
+  ventureName: string;
+  ventureTagColor: string;
+  businessDate: string;
+  attendanceStatus: string;
+  status: string;
+  generalNote: string | null;
+  totalMinutes: number;
+  editable: boolean;
+  attendanceConflict: boolean;
+  entries: DayEntry[];
+  tasks: { id: string; title: string }[];
+};
+
+const ATTENDANCE = [
+  { value: "PRESENT", label: "Present" },
+  { value: "REMOTE", label: "Remote" },
+  { value: "ON_LEAVE", label: "On leave" },
+  { value: "ABSENT", label: "Absent" },
+];
+
+const STATUS_TONE: Record<string, "neutral" | "green" | "amber" | "red" | "blue"> = {
+  DRAFT: "neutral",
+  SUBMITTED: "blue",
+  APPROVED: "green",
+  REJECTED: "red",
+  LOCKED: "neutral",
+};
+
+export function DayVentureSection({
+  section,
+  hasRunningTimer,
+}: {
+  section: DaySection;
+  hasRunningTimer: boolean;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const [showManual, setShowManual] = useState(false);
+
+  const locked = !section.editable;
+
+  function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
+    setError(null);
+    startTransition(async () => {
+      const result = await fn();
+      if (!result.ok) setError(result.error ?? "That did not work.");
+    });
+  }
+
+  return (
+    <section className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <header className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
+        <span
+          className="h-2.5 w-2.5 rounded-full"
+          style={{ backgroundColor: section.ventureTagColor }}
+          aria-hidden
+        />
+        <h2 className="flex-1 font-medium text-zinc-900 dark:text-zinc-100">
+          {section.ventureName}
+        </h2>
+        <span className="tabular-nums text-sm text-zinc-600 dark:text-zinc-400">
+          {formatMinutes(section.totalMinutes)}
+        </span>
+        <Badge tone={STATUS_TONE[section.status] ?? "neutral"}>
+          {section.status.toLowerCase()}
+        </Badge>
+      </header>
+
+      <div className="space-y-4 p-5">
+        {section.attendanceConflict && (
+          <div
+            role="alert"
+            className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            Attendance is marked as away, but hours are logged. Fix one or the other before
+            submitting.
+          </div>
+        )}
+
+        {section.status === "REJECTED" && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+          >
+            Returned by your manager. Make the changes and submit again.
+          </div>
+        )}
+
+        {/* Attendance + note */}
+        <form action={updateLogAction} className="flex flex-wrap items-end gap-3">
+          <input type="hidden" name="logId" value={section.logId} />
+          <div>
+            <label
+              htmlFor={`att-${section.logId}`}
+              className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
+            >
+              Attendance
+            </label>
+            <select
+              id={`att-${section.logId}`}
+              name="attendanceStatus"
+              defaultValue={section.attendanceStatus}
+              disabled={locked}
+              className="rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:disabled:bg-zinc-800"
+            >
+              {ATTENDANCE.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-48 flex-1">
+            <label
+              htmlFor={`note-${section.logId}`}
+              className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
+            >
+              Note for the day (optional)
+            </label>
+            <input
+              id={`note-${section.logId}`}
+              name="generalNote"
+              defaultValue={section.generalNote ?? ""}
+              disabled={locked}
+              className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm disabled:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900 dark:disabled:bg-zinc-800"
+            />
+          </div>
+          {!locked && (
+            <Button variant="secondary" type="submit">
+              Save
+            </Button>
+          )}
+        </form>
+
+        {/* Entries */}
+        <div>
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Time entries
+          </h3>
+          {section.entries.length === 0 ? (
+            <p className="rounded-md border border-dashed border-zinc-300 px-3 py-4 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+              No time recorded yet today.
+            </p>
+          ) : (
+            <ul className="divide-y divide-zinc-200 dark:divide-zinc-800">
+              {section.entries.map((e) => (
+                <li key={e.id} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+                  <span className="min-w-0 flex-1">
+                    <span className="text-zinc-900 dark:text-zinc-100">
+                      {e.taskTitle ?? "General work"}
+                    </span>
+                    {e.note && (
+                      <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">
+                        {e.note}
+                      </span>
+                    )}
+                  </span>
+
+                  {e.source === "TIMER" && <Badge>timer</Badge>}
+                  {e.approvalStatus === "NEEDS_REVIEW" && <Badge tone="amber">needs review</Badge>}
+
+                  <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
+                    {e.running ? "running…" : formatMinutes(e.durationMinutes)}
+                  </span>
+
+                  {!locked && !e.running && e.source !== "TIMER" && (
+                    <form action={deleteEntryAction}>
+                      <input type="hidden" name="entryId" value={e.id} />
+                      <input type="hidden" name="ventureId" value={section.ventureId} />
+                      <Button
+                        variant="ghost"
+                        type="submit"
+                        className="px-2 py-1 text-xs text-red-600 dark:text-red-400"
+                      >
+                        Remove
+                      </Button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {error && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+          >
+            {error}
+          </div>
+        )}
+
+        {/* Actions */}
+        {!locked && (
+          <div className="flex flex-wrap gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+            {hasRunningTimer ? (
+              <Button
+                variant="danger"
+                disabled={pending}
+                onClick={() => run(() => stopTimerAction())}
+              >
+                Stop timer
+              </Button>
+            ) : (
+              <Button
+                disabled={pending}
+                onClick={() => run(() => startTimerAction(section.ventureId))}
+              >
+                Start timer
+              </Button>
+            )}
+
+            <Button variant="secondary" onClick={() => setShowManual((v) => !v)}>
+              {showManual ? "Cancel" : "Add hours manually"}
+            </Button>
+
+            <div className="flex-1" />
+
+            <Button
+              variant="secondary"
+              disabled={pending || section.totalMinutes === 0}
+              onClick={() => run(() => submitLogAction(section.logId))}
+            >
+              Submit day for review
+            </Button>
+          </div>
+        )}
+
+        {showManual && !locked && (
+          <ManualEntryForm section={section} onDone={() => setShowManual(false)} />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ManualEntryForm({
+  section,
+  onDone,
+}: {
+  section: DaySection;
+  onDone: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  return (
+    <form
+      className="rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/60"
+      action={(formData: FormData) => {
+        setError(null);
+        startTransition(async () => {
+          const result = await saveManualEntryAction({ ok: true }, formData);
+          if (result.ok) onDone();
+          else setError(result.error ?? "Could not save the entry.");
+        });
+      }}
+    >
+      <input type="hidden" name="ventureId" value={section.ventureId} />
+      <input type="hidden" name="businessDate" value={section.businessDate} />
+
+      <div className="grid gap-3 sm:grid-cols-4">
+        <div className="sm:col-span-2">
+          <label
+            htmlFor={`task-${section.logId}`}
+            className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
+          >
+            Task
+          </label>
+          <select
+            id={`task-${section.logId}`}
+            name="taskId"
+            className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          >
+            <option value="">General work (no task)</option>
+            {section.tasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label
+            htmlFor={`h-${section.logId}`}
+            className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
+          >
+            Hours
+          </label>
+          <input
+            id={`h-${section.logId}`}
+            name="hours"
+            type="number"
+            min="0"
+            max="24"
+            defaultValue="0"
+            className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          />
+        </div>
+        <div>
+          <label
+            htmlFor={`m-${section.logId}`}
+            className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
+          >
+            Minutes
+          </label>
+          <input
+            id={`m-${section.logId}`}
+            name="minutes"
+            type="number"
+            min="0"
+            max="59"
+            step="5"
+            defaultValue="0"
+            className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          />
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <label
+          htmlFor={`n-${section.logId}`}
+          className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
+        >
+          Note (optional)
+        </label>
+        <input
+          id={`n-${section.logId}`}
+          name="note"
+          className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          placeholder="What did you work on?"
+        />
+      </div>
+
+      {error && (
+        <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-3">
+        <Button type="submit" disabled={pending}>
+          {pending ? "Adding…" : "Add entry"}
+        </Button>
+      </div>
+    </form>
+  );
+}

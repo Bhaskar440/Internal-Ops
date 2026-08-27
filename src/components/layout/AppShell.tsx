@@ -12,17 +12,23 @@ import { Button } from "@/components/ui/Button";
  * permission server-side. Hiding a link is not security (§6).
  */
 
-type NavItem = { href: string; label: string; adminOnly?: boolean };
+type NavItem = { href: string; label: string; adminOnly?: boolean; managerOnly?: boolean };
 
 const NAV: NavItem[] = [
   { href: "/", label: "Overview" },
-  { href: "/ventures", label: "Ventures", adminOnly: true },
+  { href: "/my-day", label: "My day" },
+  { href: "/tasks", label: "Tasks" },
+  { href: "/approvals", label: "Approvals", managerOnly: true },
   { href: "/people", label: "People" },
+  { href: "/ventures", label: "Ventures", adminOnly: true },
 ];
 
 export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
   const admin = isSuperAdmin(actor);
-  const items = NAV.filter((i) => !i.adminOnly || admin);
+  const isManager = admin || [...actor.memberships.values()].includes("MANAGER");
+  const items = NAV.filter(
+    (i) => (!i.adminOnly || admin) && (!i.managerOnly || isManager),
+  );
   const initials = actor.name
     .split(" ")
     .map((p) => p[0])
