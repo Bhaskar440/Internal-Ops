@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireGlobal } from "@/lib/permissions/guard";
+import { checkGlobal } from "@/lib/permissions/guard";
+import { AccessDenied } from "@/components/layout/AccessDenied";
 import { listAuditEntries, listAuditActions } from "@/modules/audit/audit.service";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -22,7 +23,9 @@ export default async function AuditPage({
   searchParams: Promise<{ action?: string; entityType?: string; page?: string }>;
 }) {
   const params = await searchParams;
-  const actor = await requireGlobal("audit:read");
+  const access = await checkGlobal("audit:read");
+  if (!access.allowed) return <AccessDenied area="the audit log" />;
+  const actor = access.actor;
 
   const [{ entries, total, page, pageSize }, actions] = await Promise.all([
     listAuditEntries(actor, {

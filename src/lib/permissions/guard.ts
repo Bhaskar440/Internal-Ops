@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/client";
 import { requireActiveActor } from "@/lib/auth/actor";
 import type { Actor, ActorWithVenture } from "./types";
 import { canGlobal, canVenture, type GlobalPermission, type VenturePermission } from "./matrix";
-import { forbidden, notFound } from "@/lib/errors/appError";
+import { forbidden, notFound, isAppError } from "@/lib/errors/appError";
 
 /**
  * Authorization guards implementing the §51 request pipeline:
@@ -93,4 +93,27 @@ export async function requireVentureBySlug(
   });
   if (!venture) throw notFound("Venture");
   return requireVenture(venture.id, permission);
+}
+
+/**
+ * Page-level authorization that RENDERS a denial rather than throwing.
+ *
+ * Throwing from a server component produces a 500 and, in production, Next
+ * strips the message so the boundary cannot tell "forbidden" from "crashed".
+ * The spec asks for a clear refusal (§69, §70), so pages ask this instead and
+ * render an access-denied view when it says no.
+ *
+ * API routes keep using requireGlobal / requireVenture, which throw and are
+ * translated into a proper status code.
+ */
+export async function checkGlobal(
+  permission: GlobalPermission,
+): Promise<{ allowed: true; actor: Actor } | { allowed: false; reason: string }> {
+  try {
+    const actor = await requireGlobal(permission);
+    return { allowed: true, actor };
+  } catch (e) {
+    if (isAppError(e)) return { allowed: false, reason: e.message };
+    throw e;
+  }
 }

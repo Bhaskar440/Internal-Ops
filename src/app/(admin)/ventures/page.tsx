@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireGlobal } from "@/lib/permissions/guard";
+import { checkGlobal } from "@/lib/permissions/guard";
+import { AccessDenied } from "@/components/layout/AccessDenied";
 import { listVentures } from "@/modules/ventures/venture.service";
 import { Card, PageHeader, EmptyState, Badge } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -10,7 +11,9 @@ export const metadata = { title: "Ventures · Portfolio Ops" };
 
 export default async function VenturesPage() {
   // Super Admin only — enforced server-side, not by hiding the nav link.
-  const actor = await requireGlobal("venture:list:all");
+  const access = await checkGlobal("venture:list:all");
+  if (!access.allowed) return <AccessDenied area="venture management" />;
+  const actor = access.actor;
   const ventures = await listVentures(actor, { includeArchived: true });
 
   const active = ventures.filter((v) => v.active);

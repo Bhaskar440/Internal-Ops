@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireGlobal } from "@/lib/permissions/guard";
+import { checkGlobal } from "@/lib/permissions/guard";
+import { AccessDenied } from "@/components/layout/AccessDenied";
 import { listRuns } from "@/modules/payroll/payroll.service";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/ui/Card";
 import { NewRunForm } from "./NewRunForm";
@@ -16,7 +17,9 @@ const STATUS_TONE: Record<string, "neutral" | "green" | "amber" | "red" | "blue"
 };
 
 export default async function PayrollPage() {
-  const actor = await requireGlobal("payroll:read");
+  const access = await checkGlobal("payroll:read");
+  if (!access.allowed) return <AccessDenied area="payroll" />;
+  const actor = access.actor;
   const runs = await listRuns(actor);
 
   const now = new Date();

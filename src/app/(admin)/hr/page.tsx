@@ -1,4 +1,5 @@
-import { requireGlobal } from "@/lib/permissions/guard";
+import { checkGlobal } from "@/lib/permissions/guard";
+import { AccessDenied } from "@/components/layout/AccessDenied";
 import { listAssets, listDocuments } from "@/modules/hr/hr.service";
 import { listPeople } from "@/modules/people/person.service";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/ui/Card";
@@ -26,7 +27,9 @@ const DOC_TONE: Record<string, "neutral" | "green" | "amber" | "red" | "blue"> =
 };
 
 export default async function HrPage() {
-  const actor = await requireGlobal("person:update:profile");
+  const access = await checkGlobal("person:update:profile");
+  if (!access.allowed) return <AccessDenied area="HR records" />;
+  const actor = access.actor;
 
   const [assets, documents, people] = await Promise.all([
     listAssets(actor),

@@ -55,6 +55,58 @@ export async function checkLoginAllowed(
   return { allowed: true };
 }
 
+/**
+ * Rate limit for unauthenticated flows that send email or consume tokens —
+ * password reset requests and invitation acceptance.
+ *
+ * Reuses the login-attempt table with a namespaced key, so there is one place
+ * that decides whether a caller is being abusive.
+ */
+const MAX_SENSITIVE_PER_KEY = 5;
+const MAX_SENSITIVE_PER_IP = 15;
+
+export async function checkSensitiveActionAllowed(
+  key: string,
+  ipAddress?: string,
+): Promise<RateLimitResult> {
+  const since = new Date(Date.now() - WINDOW_MINUTES * 60 * 1000);
+  const namespaced = `reset:${key.toLowerCase().trim()}`;
+
+  const [byKey, byIp] = await Promise.all([
+    prisma.loginAttempt.count({
+      where: { email: namespaced, createdAt: { gte: since } },
+    }),
+    ipAddress
+      ? prisma.loginAttempt.count({
+          where: {
+            ipAddress,
+            email: { startsWith: "reset:" },
+            createdAt: { gte: since },
+          },
+        })
+      : Promise.resolve(0),
+  ]);
+
+  if (byKey >= MAX_SENSITIVE_PER_KEY || byIp >= MAX_SENSITIVE_PER_IP) {
+    return { allowed: false, retryAfterMinutes: WINDOW_MINUTES };
+  }
+  return { allowed: true };
+}
+
+/** Record one attempt at a sensitive unauthenticated action. */
+export async function recordSensitiveAction(
+  key: string,
+  ipAddress?: string,
+): Promise<void> {
+  await prisma.loginAttempt.create({
+    data: {
+      email: `reset:${key.toLowerCase().trim()}`,
+      ipAddress: ipAddress ?? null,
+      successful: false,
+    },
+  });
+}
+
 /** Housekeeping for old rows; safe to call from a scheduled job. */
 export async function pruneLoginAttempts(): Promise<number> {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);

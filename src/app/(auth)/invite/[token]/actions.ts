@@ -3,7 +3,12 @@
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
+import { headers } from "next/headers";
 import { writeAudit } from "@/lib/audit/audit";
+import {
+  checkSensitiveActionAllowed,
+  recordSensitiveAction,
+} from "@/lib/auth/rateLimit";
 
 /**
  * Invitation acceptance (§7 admin-created employee).
@@ -41,6 +46,16 @@ export async function acceptInvite(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Check the password you entered." };
   }
+
+  // Anonymous and token-consuming, so rate limited to stop token guessing.
+  const ip = await clientIp();
+  const limit = await checkSensitiveActionAllowed(`invite:${ip ?? "unknown"}`, ip);
+  if (!limit.allowed) {
+    return {
+      error: `Too many attempts. Try again in ${limit.retryAfterMinutes} minutes.`,
+    };
+  }
+  await recordSensitiveAction(`invite:${ip ?? "unknown"}`, ip);
 
   const record = await prisma.verificationToken.findUnique({ where: { token } });
   if (!record || record.expires < new Date()) {
@@ -80,4 +95,12 @@ export async function acceptInvite(
   });
 
   return { done: true };
+}
+
+/** Best-effort client IP from proxy headers, for rate limiting. */
+async function clientIp(): Promise<string | undefined> {
+  const h = await headers();
+  const forwarded = h.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0]?.trim();
+  return h.get("x-real-ip") ?? undefined;
 }

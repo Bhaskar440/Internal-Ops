@@ -7,6 +7,8 @@ import {
   recordFailedLogin,
   clearFailedLogins,
   pruneLoginAttempts,
+  checkSensitiveActionAllowed,
+  recordSensitiveAction,
 } from "@/lib/auth/rateLimit";
 
 /**
@@ -94,6 +96,44 @@ describe("login rate limiting (§63)", () => {
     });
     const pruned = await pruneLoginAttempts();
     expect(pruned).toBeGreaterThan(0);
+  });
+});
+
+describe("anonymous sensitive actions are rate limited", () => {
+  it("stops repeated password-reset requests for one address", async () => {
+    const target = `flood-${S}@test.local`;
+    const floodIp = `10.9.9.${Math.floor(Math.random() * 200) + 1}`;
+
+    expect((await checkSensitiveActionAllowed(target, floodIp)).allowed).toBe(true);
+
+    // Five requests is the cap; the sixth must be refused, so the endpoint
+    // cannot be used to flood an inbox or probe for accounts.
+    for (let i = 0; i < 5; i++) {
+      await recordSensitiveAction(target, floodIp);
+    }
+
+    const blocked = await checkSensitiveActionAllowed(target, floodIp);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.retryAfterMinutes).toBeGreaterThan(0);
+
+    await prisma.loginAttempt.deleteMany({ where: { ipAddress: floodIp } });
+  });
+
+  it("keeps reset counters separate from login counters", async () => {
+    const shared = `shared-${S}@test.local`;
+    const sharedIp = `10.8.8.${Math.floor(Math.random() * 200) + 1}`;
+
+    // Exhaust the reset limit.
+    for (let i = 0; i < 5; i++) {
+      await recordSensitiveAction(shared, sharedIp);
+    }
+    expect((await checkSensitiveActionAllowed(shared, sharedIp)).allowed).toBe(false);
+
+    // Signing in with the same address must still be possible — a reset flood
+    // should not lock someone out of the login form.
+    expect((await checkLoginAllowed(shared, sharedIp)).allowed).toBe(true);
+
+    await prisma.loginAttempt.deleteMany({ where: { ipAddress: sharedIp } });
   });
 });
 

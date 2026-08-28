@@ -5,7 +5,12 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { writeAudit } from "@/lib/audit/audit";
+import { headers } from "next/headers";
 import { sendPasswordResetEmail, isEmailConfigured } from "@/lib/email/mailer";
+import {
+  checkSensitiveActionAllowed,
+  recordSensitiveAction,
+} from "@/lib/auth/rateLimit";
 
 /**
  * Password reset (§63).
@@ -42,6 +47,17 @@ export async function requestPasswordReset(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Enter a valid email address." };
   }
+
+  // This endpoint is anonymous and sends email, so it must be rate limited:
+  // otherwise it can be used to flood an inbox or to probe for accounts.
+  const ip = await clientIp();
+  const limit = await checkSensitiveActionAllowed(parsed.data.email, ip);
+  if (!limit.allowed) {
+    return {
+      error: `Too many reset requests. Try again in ${limit.retryAfterMinutes} minutes.`,
+    };
+  }
+  await recordSensitiveAction(parsed.data.email, ip);
 
   const user = await prisma.user.findUnique({
     where: { email: parsed.data.email },
@@ -153,4 +169,12 @@ export async function isResetTokenValid(token: string): Promise<boolean> {
     select: { expiresAt: true, usedAt: true },
   });
   return Boolean(record && !record.usedAt && record.expiresAt > new Date());
+}
+
+/** Best-effort client IP from proxy headers, for rate limiting. */
+async function clientIp(): Promise<string | undefined> {
+  const h = await headers();
+  const forwarded = h.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0]?.trim();
+  return h.get("x-real-ip") ?? undefined;
 }
