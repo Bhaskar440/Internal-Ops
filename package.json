@@ -18,7 +18,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration"
+    "test:integration": "vitest run tests/integration",
+    "db:demo": "tsx prisma/demo.ts",
+    "db:demo:clear": "tsx prisma/demo-clear.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

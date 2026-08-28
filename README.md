@@ -56,7 +56,17 @@ admin@portfolioops.local / ChangeMe!2026
 | `npm run db:up` / `db:down` | Start / stop Postgres |
 | `npm run db:migrate` | Apply migrations in development |
 | `npm run db:seed` | Seed the first admin and ventures (idempotent) |
+| `npm run db:demo` | Fill with demo people, tasks, hours and payroll for evaluation |
+| `npm run db:demo:clear` | Remove everything the demo seed created |
 | `npm run db:studio` | Browse the database |
+
+**Want something to click through?** `npm run db:demo` adds eight fictional
+people across the three ventures, fourteen tasks, a few weeks of approved
+hours, a day awaiting approval, hardware and an expiring document. Demo
+accounts sign in with `DemoPassword123` — for example
+`aarav@demo.portfolioops.local` (a manager) or `neha@demo.portfolioops.local`
+(a member). It is kept separate from the real seed, refuses to run against a
+non-local database, and `npm run db:demo:clear` removes exactly what it added.
 
 Verify the whole business flow end to end against the dev database — it creates
 a venture, employee, task, hours, approval, payroll run, then cleans up:
