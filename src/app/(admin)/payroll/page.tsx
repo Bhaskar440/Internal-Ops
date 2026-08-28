@@ -3,6 +3,7 @@ import { checkGlobal } from "@/lib/permissions/guard";
 import { AccessDenied } from "@/components/layout/AccessDenied";
 import { listRuns } from "@/modules/payroll/payroll.service";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { NewRunForm } from "./NewRunForm";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,11 @@ export default async function PayrollPage() {
       <PageHeader
         title="Payroll"
         description="Calculates gross payable amounts only. It does not move money or compute tax."
+        action={
+          <Link href="/payroll/adjustments">
+            <Button variant="secondary">Adjustments</Button>
+          </Link>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-3">

@@ -9,6 +9,8 @@ import {
   lockRun,
   voidRun,
   markLinePaid,
+  createAdjustment,
+  cancelAdjustment,
   monthPeriod,
 } from "@/modules/payroll/payroll.service";
 import { setAgreement } from "@/modules/compensation/compensation.service";
@@ -104,4 +106,46 @@ export async function setCompensationAction(
   } catch (e) {
     return { error: isAppError(e) ? e.message : "Could not save the pay agreement." };
   }
+}
+
+/**
+ * Raise a correction against already-paid payroll (§43). It settles into the
+ * person's next run rather than altering the run that was paid.
+ */
+export async function createAdjustmentAction(
+  _prev: PayrollFormState,
+  formData: FormData,
+): Promise<PayrollFormState> {
+  try {
+    const actor = await requireGlobal("payroll:mark-paid");
+
+    const amount = Number(formData.get("amount"));
+    if (!Number.isFinite(amount) || amount === 0) {
+      return { error: "Enter an amount other than zero." };
+    }
+
+    await createAdjustment(actor, {
+      personId: String(formData.get("personId")),
+      sourcePayrollLineId: String(formData.get("sourcePayrollLineId") ?? "") || undefined,
+      amount,
+      currency: String(formData.get("currency") ?? "INR"),
+      reason: String(formData.get("reason") ?? ""),
+    });
+
+    revalidatePath("/payroll");
+    revalidatePath("/payroll/adjustments");
+    return {};
+  } catch (e) {
+    return { error: isAppError(e) ? e.message : "Could not record the adjustment." };
+  }
+}
+
+export async function cancelAdjustmentAction(formData: FormData): Promise<void> {
+  const actor = await requireGlobal("payroll:mark-paid");
+  await cancelAdjustment(
+    actor,
+    String(formData.get("adjustmentId")),
+    String(formData.get("reason") ?? ""),
+  );
+  revalidatePath("/payroll/adjustments");
 }

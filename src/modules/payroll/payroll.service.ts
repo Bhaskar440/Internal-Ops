@@ -336,10 +336,23 @@ export async function generateLines(actor: Actor, runId: string) {
           .reduce((sum, t) => sum + Number(t.fixedFee ?? 0), 0);
       }
 
-      // Nothing earned and nothing worked — no line rather than a zero line.
-      if (computedPay === 0 && approvedMinutes === 0) continue;
+      // Outstanding adjustments from earlier PAID runs settle forward into this
+      // one (§43). Only matching-currency adjustments are applied, since mixed
+      // currencies are never combined (§36).
+      const outstanding = await tx.payrollAdjustment.findMany({
+        where: {
+          personId: person.id,
+          settledPayrollLineId: null,
+          currency: agreement.currency,
+        },
+        select: { id: true, amount: true },
+      });
+      const adjustmentTotal = outstanding.reduce((sum, a) => sum + Number(a.amount), 0);
 
-      await tx.payrollLine.create({
+      // Nothing earned, nothing worked and nothing to settle — no zero line.
+      if (computedPay === 0 && approvedMinutes === 0 && outstanding.length === 0) continue;
+
+      const line = await tx.payrollLine.create({
         data: {
           payrollRunId: runId,
           personId: person.id,
@@ -349,10 +362,20 @@ export async function generateLines(actor: Actor, runId: string) {
           approvedMinutes,
           eligibleDays: eligible,
           workingDays,
-          computedPay: computedPay.toFixed(4),
+          // The adjustment is folded into the payable amount, so the line still
+          // states exactly what this person is owed for this run.
+          computedPay: (computedPay + adjustmentTotal).toFixed(4),
           paymentStatus: "UNPAID",
         },
+        select: { id: true },
       });
+
+      if (outstanding.length > 0) {
+        await tx.payrollAdjustment.updateMany({
+          where: { id: { in: outstanding.map((a) => a.id) } },
+          data: { settledPayrollLineId: line.id },
+        });
+      }
     }
 
     await tx.payrollRun.update({
@@ -602,6 +625,186 @@ export async function listRuns(actor: Actor) {
     lockedAt: r.lockedAt,
     lineCount: r._count.lines,
   }));
+}
+
+// --- adjustments (§43) ------------------------------------------------------
+
+export type AdjustmentView = {
+  id: string;
+  personId: string;
+  personName: string;
+  amount: string;
+  currency: string;
+  reason: string;
+  createdAt: Date;
+  settled: boolean;
+  settledAt: Date | null;
+  sourcePeriod: string | null;
+};
+
+/**
+ * Raise a correction against payroll that has ALREADY BEEN PAID.
+ *
+ * Paid payroll is never rewritten (§43). Instead the difference is recorded
+ * here and settles forward into the person's next run, so the historical
+ * snapshot and the audit trail both stay intact.
+ *
+ * A positive amount pays more; a negative amount recovers an overpayment.
+ */
+export async function createAdjustment(
+  actor: Actor,
+  input: {
+    personId: string;
+    sourcePayrollLineId?: string;
+    amount: number;
+    currency: string;
+    reason: string;
+  },
+) {
+  assertPayrollAccess(actor);
+
+  if (!Number.isFinite(input.amount) || input.amount === 0) {
+    throw conflict("Enter an amount other than zero.");
+  }
+  if (!input.reason.trim()) {
+    throw conflict("A reason is required so the correction can be explained later.");
+  }
+
+  const person = await prisma.person.findUnique({
+    where: { id: input.personId },
+    select: { id: true },
+  });
+  if (!person) throw notFound("Person");
+
+  // When raised against a specific line, that line must actually be paid —
+  // an unpaid run should be voided and regenerated instead (§43).
+  if (input.sourcePayrollLineId) {
+    const source = await prisma.payrollLine.findUnique({
+      where: { id: input.sourcePayrollLineId },
+      select: { id: true, personId: true, paymentStatus: true, currency: true },
+    });
+    if (!source) throw notFound("Payroll line");
+    if (source.personId !== input.personId) {
+      throw conflict("That payroll line belongs to a different person.");
+    }
+    if (source.paymentStatus !== "PAID") {
+      throw conflict(
+        "That line has not been paid yet. Void the run and regenerate it instead of adjusting.",
+      );
+    }
+    if (source.currency !== input.currency.toUpperCase()) {
+      throw conflict("The adjustment currency must match the original payroll line.");
+    }
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const created = await tx.payrollAdjustment.create({
+      data: {
+        personId: input.personId,
+        sourcePayrollLineId: input.sourcePayrollLineId,
+        amount: input.amount,
+        currency: input.currency.toUpperCase(),
+        reason: input.reason.trim(),
+        createdBy: actor.userId,
+      },
+      select: { id: true, amount: true, currency: true },
+    });
+
+    await writeAudit(tx, {
+      actorUserId: actor.userId,
+      action: "PAYROLL_ADJUSTED",
+      entityType: "PayrollAdjustment",
+      entityId: created.id,
+      after: {
+        personId: input.personId,
+        amount: input.amount,
+        currency: created.currency,
+        sourcePayrollLineId: input.sourcePayrollLineId ?? null,
+      },
+      reason: input.reason.trim(),
+    });
+
+    return created;
+  });
+}
+
+/** Adjustments, newest first. Outstanding ones settle into the next run. */
+export async function listAdjustments(
+  actor: Actor,
+  opts: { personId?: string; outstandingOnly?: boolean } = {},
+): Promise<AdjustmentView[]> {
+  assertPayrollAccess(actor);
+
+  const rows = await prisma.payrollAdjustment.findMany({
+    where: {
+      ...(opts.personId ? { personId: opts.personId } : {}),
+      ...(opts.outstandingOnly ? { settledPayrollLineId: null } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+    select: {
+      id: true,
+      personId: true,
+      amount: true,
+      currency: true,
+      reason: true,
+      createdAt: true,
+      settledPayrollLineId: true,
+      person: { select: { user: { select: { name: true } } } },
+      settledLine: { select: { run: { select: { periodStart: true, periodEnd: true } } } },
+      sourceLine: { select: { run: { select: { periodStart: true, periodEnd: true } } } },
+    },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    personId: r.personId,
+    personName: r.person.user.name,
+    amount: String(r.amount),
+    currency: r.currency,
+    reason: r.reason,
+    createdAt: r.createdAt,
+    settled: r.settledPayrollLineId !== null,
+    settledAt: r.settledLine ? r.settledLine.run.periodEnd : null,
+    sourcePeriod: r.sourceLine
+      ? `${fromPrismaDate(r.sourceLine.run.periodStart)} → ${fromPrismaDate(r.sourceLine.run.periodEnd)}`
+      : null,
+  }));
+}
+
+/**
+ * Cancel an adjustment that has not settled yet.
+ *
+ * A settled adjustment is part of a paid line and can never be removed — that
+ * would rewrite history, which is exactly what §43 forbids.
+ */
+export async function cancelAdjustment(actor: Actor, adjustmentId: string, reason: string) {
+  assertPayrollAccess(actor);
+  if (!reason.trim()) throw conflict("A reason is required to cancel an adjustment.");
+
+  const existing = await prisma.payrollAdjustment.findUnique({
+    where: { id: adjustmentId },
+    select: { id: true, amount: true, currency: true, settledPayrollLineId: true },
+  });
+  if (!existing) throw notFound("Adjustment");
+  if (existing.settledPayrollLineId) {
+    throw conflict(
+      "That adjustment has already been settled into a payroll run and cannot be removed.",
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.payrollAdjustment.delete({ where: { id: adjustmentId } });
+    await writeAudit(tx, {
+      actorUserId: actor.userId,
+      action: "PAYROLL_ADJUSTED",
+      entityType: "PayrollAdjustment",
+      entityId: adjustmentId,
+      before: { amount: existing.amount, currency: existing.currency },
+      after: null,
+      reason: `Cancelled: ${reason.trim()}`,
+    });
+  });
 }
 
 function endOfDay(d: Date): Date {
