@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { WEEKDAYS } from "@/modules/ventures/venture.schema";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Settings · Portfolio Ops" };
+export const metadata = { title: "Settings" };
 
 /**
  * Settings (§8, §87).

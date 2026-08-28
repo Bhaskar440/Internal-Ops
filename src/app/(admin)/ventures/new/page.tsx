@@ -5,7 +5,7 @@ import { createVentureAction } from "../actions";
 import { Card, PageHeader } from "@/components/ui/Card";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Create venture · Portfolio Ops" };
+export const metadata = { title: "Create venture" };
 
 export default async function NewVenturePage() {
   await requireGlobal("venture:create");

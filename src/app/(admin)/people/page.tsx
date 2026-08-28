@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { setAccountStatusAction } from "./actions";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "People · Portfolio Ops" };
+export const metadata = { title: "People" };
 
 const STATUS_TONE = {
   ACTIVE: "green",

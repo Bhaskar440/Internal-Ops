@@ -6,7 +6,7 @@ import { formatMinutes } from "@/lib/money/efficiency";
 import { fromPrismaDate } from "@/lib/timezone/businessDate";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "My pay · Portfolio Ops" };
+export const metadata = { title: "My pay" };
 
 /**
  * My Pay (§57, §58).

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { resolveActor } from "@/lib/auth/actor";
 import { LoginForm } from "./LoginForm";
 
-export const metadata = { title: "Sign in · Portfolio Ops" };
+export const metadata = { title: "Sign in" };
 export const dynamic = "force-dynamic";
 
 export default async function LoginPage() {

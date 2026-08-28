@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { formatMinutes, formatEfficiency } from "@/lib/money/efficiency";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Reports · Portfolio Ops" };
+export const metadata = { title: "Reports" };
 
 const TABS = [
   { key: "hours", label: "Hours" },

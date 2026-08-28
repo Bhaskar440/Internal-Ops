@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { WEEKDAYS } from "@/modules/ventures/venture.schema";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Ventures · Portfolio Ops" };
+export const metadata = { title: "Ventures" };
 
 export default async function VenturesPage() {
   // Super Admin only — enforced server-side, not by hiding the nav link.

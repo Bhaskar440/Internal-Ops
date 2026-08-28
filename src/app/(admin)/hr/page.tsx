@@ -8,7 +8,7 @@ import { AssetForm, DocumentForm } from "./HrForms";
 import { issueAssetAction, returnAssetAction } from "./actions";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "HR records · Portfolio Ops" };
+export const metadata = { title: "HR records" };
 
 const ASSET_TONE: Record<string, "neutral" | "green" | "amber" | "red" | "blue"> = {
   AVAILABLE: "green",

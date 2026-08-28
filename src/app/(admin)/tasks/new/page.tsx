@@ -7,7 +7,7 @@ import { createTaskAction } from "../actions";
 import { Card, PageHeader, EmptyState } from "@/components/ui/Card";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Create task · Portfolio Ops" };
+export const metadata = { title: "Create task" };
 
 export default async function NewTaskPage() {
   const actor = await requireActiveActor();

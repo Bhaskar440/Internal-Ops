@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { formatMinutes, formatEfficiency } from "@/lib/money/efficiency";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Overview · Portfolio Ops" };
+export const metadata = { title: "Overview" };
 
 /**
  * Admin dashboard (§9).

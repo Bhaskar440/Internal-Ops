@@ -9,7 +9,7 @@ import { KanbanBoard, type BoardTask } from "@/components/kanban/KanbanBoard";
 import { fromPrismaDate } from "@/lib/timezone/businessDate";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Tasks · Portfolio Ops" };
+export const metadata = { title: "Tasks" };
 
 export default async function TasksPage({
   searchParams,

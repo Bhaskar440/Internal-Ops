@@ -3,7 +3,7 @@ import { isResetTokenValid } from "../../forgot-password/actions";
 import { ResetPasswordForm } from "./ResetPasswordForm";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Set a new password · Portfolio Ops" };
+export const metadata = { title: "Set a new password" };
 
 export default async function ResetPasswordPage({
   params,

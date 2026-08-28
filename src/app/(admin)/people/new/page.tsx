@@ -5,7 +5,7 @@ import { createPersonAction } from "../actions";
 import { Card, PageHeader } from "@/components/ui/Card";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Add person · Portfolio Ops" };
+export const metadata = { title: "Add person" };
 
 export default async function NewPersonPage() {
   const actor = await requireGlobal("person:create");

@@ -7,7 +7,7 @@ import { formatMinutes } from "@/lib/money/efficiency";
 import { approveLogAction, rejectLogAction } from "../my-day/actions";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Approvals · Portfolio Ops" };
+export const metadata = { title: "Approvals" };
 
 export default async function ApprovalsPage() {
   const actor = await requireActiveActor();

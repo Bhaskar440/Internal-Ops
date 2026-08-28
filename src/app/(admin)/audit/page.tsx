@@ -6,7 +6,7 @@ import { PageHeader, Card, EmptyState, Badge } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Audit log · Portfolio Ops" };
+export const metadata = { title: "Audit log" };
 
 /** Actions that change money or pay, highlighted so they stand out. */
 const FINANCIAL = new Set([

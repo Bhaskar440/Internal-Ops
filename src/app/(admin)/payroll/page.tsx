@@ -6,7 +6,7 @@ import { PageHeader, Card, EmptyState, Badge } from "@/components/ui/Card";
 import { NewRunForm } from "./NewRunForm";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Payroll · Portfolio Ops" };
+export const metadata = { title: "Payroll" };
 
 const STATUS_TONE: Record<string, "neutral" | "green" | "amber" | "red" | "blue"> = {
   DRAFT: "neutral",

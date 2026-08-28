@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { InviteForm } from "./InviteForm";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Set your password · Portfolio Ops" };
+export const metadata = { title: "Set your password" };
 
 export default async function InvitePage({
   params,

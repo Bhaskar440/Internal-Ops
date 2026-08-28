@@ -7,7 +7,7 @@ import { DayVentureSection, type DaySection } from "@/components/forms/DayVentur
 import { formatMinutes } from "@/lib/money/efficiency";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "My day · Portfolio Ops" };
+export const metadata = { title: "My day" };
 
 export default async function MyDayPage({
   searchParams,
