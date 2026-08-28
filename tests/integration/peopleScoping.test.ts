@@ -145,6 +145,38 @@ describe("venture isolation (§6)", () => {
     expect(people).toHaveLength(0);
   });
 
+  it("does not disclose a colleague's OTHER venture memberships (§6)", async () => {
+    // Beta Staff is put into Alpha as well, so the Alpha manager can see them —
+    // but must not learn that they also belong to Beta.
+    await prisma.ventureMembership.upsert({
+      where: {
+        ventureId_personId: { ventureId: ids.alpha, personId: ids.betaStaffPerson },
+      },
+      update: { leftAt: null },
+      create: {
+        ventureId: ids.alpha,
+        personId: ids.betaStaffPerson,
+        accessRole: "MEMBER",
+      },
+    });
+
+    const manager = actorFor(ids.mgrUser, ids.mgrPerson, [[ids.alpha, "MANAGER"]]);
+    const people = await listPeople(manager);
+    const shared = people.find((p) => p.personId === ids.betaStaffPerson);
+
+    expect(shared).toBeDefined();
+    const ventureIds = shared!.ventures.map((v) => v.id);
+    expect(ventureIds).toContain(ids.alpha);
+    // The whole point: Beta must not appear.
+    expect(ventureIds).not.toContain(ids.beta);
+
+    // A Super Admin still sees the full picture.
+    const admin = actorFor(ids.adminUser, ids.adminPerson, [], "SUPER_ADMIN");
+    const adminView = await listPeople(admin);
+    const full = adminView.find((p) => p.personId === ids.betaStaffPerson);
+    expect(full!.ventures.map((v) => v.id)).toContain(ids.beta);
+  });
+
   it("lets a user with no memberships see nothing", async () => {
     const nobody = actorFor("no-user", "no-person", []);
     expect(await listVentures(nobody)).toHaveLength(0);

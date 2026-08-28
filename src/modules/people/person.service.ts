@@ -80,7 +80,15 @@ type PersonRow = {
   }[];
 };
 
-function toSummary(p: PersonRow): PersonSummary {
+/**
+ * Map a person row to the shape callers see.
+ *
+ * `visibleVentureIds` limits which memberships are disclosed. A manager may
+ * see someone because they share a venture, but must NOT learn which OTHER
+ * ventures that person belongs to — the HR directory is venture-limited (§6).
+ * Undefined means no restriction, which is only ever passed for a Super Admin.
+ */
+function toSummary(p: PersonRow, visibleVentureIds?: string[]): PersonSummary {
   return {
     personId: p.id,
     userId: p.user.id,
@@ -93,13 +101,15 @@ function toSummary(p: PersonRow): PersonSummary {
     startDate: p.startDate,
     endDate: p.endDate,
     archived: p.archivedAt !== null,
-    ventures: p.memberships.map((m) => ({
-      id: m.venture.id,
-      name: m.venture.name,
-      slug: m.venture.slug,
-      tagColor: m.venture.tagColor,
-      accessRole: m.accessRole,
-    })),
+    ventures: p.memberships
+      .filter((m) => visibleVentureIds === undefined || visibleVentureIds.includes(m.venture.id))
+      .map((m) => ({
+        id: m.venture.id,
+        name: m.venture.name,
+        slug: m.venture.slug,
+        tagColor: m.venture.tagColor,
+        accessRole: m.accessRole,
+      })),
   };
 }
 
@@ -141,7 +151,7 @@ export async function listPeoplePaged(
   ]);
 
   return {
-    people: rows.map((p) => toSummary(p as PersonRow)),
+    people: rows.map((p) => toSummary(p as PersonRow, visibleVentureIds(actor))),
     total,
     page,
     pageSize: PEOPLE_PAGE_SIZE,
@@ -229,7 +239,7 @@ export async function listPeople(
     take: 200,
   });
 
-  return people.map((p) => toSummary(p as PersonRow));
+  return people.map((p) => toSummary(p as PersonRow, visibleVentureIds(actor)));
 }
 
 /** People awaiting approval (§7 freelancer self-registration). */
@@ -254,9 +264,13 @@ export async function getPerson(actor: Actor, personId: string): Promise<PersonS
     const shares = person.memberships.some((m) => mine.includes(m.venture.id));
     const isSelf = person.id === actor.personId;
     if (!shares && !isSelf) throw notFound("Person");
+
+    // Viewing your own profile shows all your memberships; viewing a colleague
+    // shows only the ventures you share with them (§6).
+    if (!isSelf) return toSummary(person as PersonRow, mine);
   }
 
-  return toSummary(person as PersonRow);
+  return toSummary(person as PersonRow, visibleVentureIds(actor));
 }
 
 /**
