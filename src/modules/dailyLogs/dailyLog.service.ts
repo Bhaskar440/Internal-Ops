@@ -13,6 +13,7 @@ import {
   type BusinessDate,
 } from "@/lib/timezone/businessDate";
 import { listEntriesForDay, type TimeEntryView } from "@/modules/time/time.service";
+import { notify } from "@/modules/notifications/notification.service";
 
 /**
  * Daily logs / timesheets (§26-§32).
@@ -343,6 +344,19 @@ export async function rejectLog(
       where: { id: logId },
       data: { status: "REJECTED", rejectionReason: reason.trim(), submittedAt: null },
     });
+    // Let the employee know it came back, and why (§59).
+    await notify(
+      {
+        personId: view.personId,
+        kind: "DAILY_LOG_REJECTED",
+        title: `Your ${view.businessDate} log was returned`,
+        body: reason.trim(),
+        link: `/my-day?date=${view.businessDate}`,
+        dedupeKey: `dailylog:${logId}:rejected`,
+      },
+      tx,
+    );
+
     await writeAudit(tx, {
       actorUserId: actor.userId,
       action: "DAILY_LOG_REJECTED",

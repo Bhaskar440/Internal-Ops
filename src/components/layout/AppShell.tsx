@@ -6,6 +6,7 @@ import { isSuperAdmin } from "@/lib/permissions/types";
 import { isMyPayEnabled } from "@/modules/compensation/compensation.service";
 import { NavLink } from "./NavLink";
 import { Button } from "@/components/ui/Button";
+import { unreadCount } from "@/modules/notifications/notification.service";
 
 /**
  * Application shell with role-aware navigation (§8).
@@ -33,7 +34,8 @@ const NAV: NavItem[] = [
   { href: "/settings", label: "Settings", adminOnly: true },
 ];
 
-export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
+export async function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
+  const unread = await unreadCount(actor);
   const admin = isSuperAdmin(actor);
   const isManager = admin || [...actor.memberships.values()].includes("MANAGER");
 
@@ -78,6 +80,19 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
               {isMyPayEnabled() && (
                 <NavLink href="/my-pay" label="My pay" />
               )}
+
+              <Link
+                href="/notifications"
+                aria-label={unread > 0 ? `Notifications, ${unread} unread` : "Notifications"}
+                className="relative rounded-md px-2 py-1.5 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+              >
+                <span aria-hidden>&#128276;</span>
+                {unread > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold tabular-nums text-white">
+                    {unread > 9 ? "9+" : unread}
+                  </span>
+                )}
+              </Link>
 
               <div className="hidden items-center gap-2 border-l border-zinc-200 pl-3 dark:border-zinc-800 md:flex">
                 <div className="text-right">

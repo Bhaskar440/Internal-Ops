@@ -131,6 +131,18 @@ enum PayrollRunStatus {
   VOID
 }
 
+/// §59 Phase 1: the in-app alert centre. Email/Slack delivery is Phase 3.
+enum NotificationKind {
+  TASK_ASSIGNED
+  TASK_DUE_SOON
+  TASK_OVERDUE
+  DAILY_LOG_MISSING
+  DAILY_LOG_REJECTED
+  DOCUMENT_EXPIRING
+  ACCOUNT_AWAITING_APPROVAL
+  PAYROLL_EXCEPTION
+}
+
 enum PaymentStatus {
   UNPAID
   PAID
@@ -265,6 +277,7 @@ model Person {
   compensationAgreements CompensationAgreement[]
   payrollLines          PayrollLine[]
   payrollAdjustments    PayrollAdjustment[]
+  notifications         Notification[]
 
   @@index([employmentType])
   @@index([archivedAt])
@@ -630,6 +643,32 @@ model PayrollAdjustment {
 
   @@index([personId])
   @@map("payroll_adjustments")
+}
+
+/// In-app notifications (§59).
+///
+/// Addressed to a PERSON, not a user, because everything worth notifying about
+/// hangs off the person side of the model. `dedupeKey` lets a recurring
+/// condition (a task still overdue tomorrow) update one row rather than pile up.
+model Notification {
+  id        String           @id @default(uuid(7))
+  personId  String           @map("person_id")
+  kind      NotificationKind
+  title     String
+  body      String?
+  /// Where clicking it should go, e.g. /tasks/<id>.
+  link      String?
+  /// Stable key for one logical alert, so repeats do not duplicate.
+  dedupeKey String           @map("dedupe_key")
+  readAt    DateTime?        @map("read_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, dedupeKey])
+  @@index([personId, readAt])
+  @@index([createdAt])
+  @@map("notifications")
 }
 
 // ---------------------------------------------------------------------------

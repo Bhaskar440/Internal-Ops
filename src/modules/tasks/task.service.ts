@@ -4,6 +4,7 @@ import { conflict, forbidden, notFound } from "@/lib/errors/appError";
 import { ventureIdScope } from "@/lib/permissions/scopes";
 import { isSuperAdmin, type Actor, type ActorWithVenture } from "@/lib/permissions/types";
 import { hoursToMinutes, calculateEfficiency } from "@/lib/money/efficiency";
+import { notifyMany } from "@/modules/notifications/notification.service";
 import { toPrismaDate } from "@/lib/timezone/businessDate";
 import {
   isBackwardTransition,
@@ -278,6 +279,20 @@ export async function createTask(
     await tx.taskStatusHistory.create({
       data: { taskId: task.id, fromStatus: null, toStatus: "BACKLOG", changedBy: actor.userId },
     });
+
+    // Tell the assignees, in the same transaction as the task itself (§59).
+    await notifyMany(
+      assigneeIds,
+      (personId) => ({
+        personId,
+        kind: "TASK_ASSIGNED" as const,
+        title: `New task: ${task.title}`,
+        body: `${actor.venture.name} · estimated ${Math.round(task.estimatedMinutes / 60)}h`,
+        link: `/tasks/${task.id}`,
+        dedupeKey: `task:${task.id}:assigned`,
+      }),
+      tx,
+    );
 
     await writeAudit(tx, {
       actorUserId: actor.userId,
