@@ -146,6 +146,7 @@ export async function listTasks(
     search?: string;
     includeArchived?: boolean;
     mineOnly?: boolean;
+    limit?: number;
   } = {},
 ): Promise<TaskView[]> {
   const scope = ventureIdScope(actor);
@@ -170,11 +171,54 @@ export async function listTasks(
     },
     select: taskSelect,
     orderBy: [{ boardOrder: "asc" }, { createdAt: "desc" }],
-    take: 300,
+    take: opts.limit ?? BOARD_TASK_LIMIT,
   });
 
   const actuals = await actualMinutesByTask(tasks.map((t) => t.id));
   return tasks.map((t) => toView(t as TaskRow, actuals.get(t.id) ?? 0));
+}
+
+/**
+ * How many tasks the board loads at once.
+ *
+ * A Kanban board is not paginated — dragging between pages makes no sense —
+ * so instead the caller is told when the view is truncated, and the filters
+ * are the way to narrow it. countTasks() supplies that number.
+ */
+export const BOARD_TASK_LIMIT = 300;
+
+/** Total matching tasks, so the board can say when it is showing a subset. */
+export async function countTasks(
+  actor: Actor,
+  opts: {
+    ventureId?: string;
+    status?: string;
+    assigneePersonId?: string;
+    search?: string;
+    includeArchived?: boolean;
+    mineOnly?: boolean;
+  } = {},
+): Promise<number> {
+  const scope = ventureIdScope(actor);
+
+  let ventureFilter = scope.ventureId;
+  if (opts.ventureId) {
+    if (!ventureFilter) ventureFilter = { in: [opts.ventureId] };
+    else if (ventureFilter.in.includes(opts.ventureId)) ventureFilter = { in: [opts.ventureId] };
+    else return 0;
+  }
+
+  const assigneePersonId = opts.mineOnly ? actor.personId : opts.assigneePersonId;
+
+  return prisma.task.count({
+    where: {
+      ...(ventureFilter ? { ventureId: ventureFilter } : {}),
+      ...(opts.includeArchived ? {} : { archivedAt: null }),
+      ...(opts.status ? { status: opts.status as never } : {}),
+      ...(assigneePersonId ? { assignees: { some: { personId: assigneePersonId } } } : {}),
+      ...(opts.search ? { title: { contains: opts.search, mode: "insensitive" as const } } : {}),
+    },
+  });
 }
 
 export async function getTask(actor: Actor, taskId: string): Promise<TaskView> {

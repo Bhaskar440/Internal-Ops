@@ -109,6 +109,83 @@ function toSummary(p: PersonRow): PersonSummary {
  * A Super Admin sees everyone. Anyone else sees only people who share one of
  * their ventures — the venture-limited HR directory of §6.
  */
+export const PEOPLE_PAGE_SIZE = 50;
+
+/**
+ * Directory listing, paginated (§61).
+ *
+ * A hard cap would silently drop the 201st person; a page count tells the
+ * caller there is more to see.
+ */
+export async function listPeoplePaged(
+  actor: Actor,
+  opts: {
+    search?: string;
+    ventureId?: string;
+    includeArchived?: boolean;
+    page?: number;
+  } = {},
+): Promise<{ people: PersonSummary[]; total: number; page: number; pageSize: number }> {
+  const page = Math.max(1, opts.page ?? 1);
+  const where = await peopleWhere(actor, opts);
+
+  const [rows, total] = await Promise.all([
+    prisma.person.findMany({
+      where,
+      select: personSelect,
+      orderBy: { user: { name: "asc" } },
+      skip: (page - 1) * PEOPLE_PAGE_SIZE,
+      take: PEOPLE_PAGE_SIZE,
+    }),
+    prisma.person.count({ where }),
+  ]);
+
+  return {
+    people: rows.map((p) => toSummary(p as PersonRow)),
+    total,
+    page,
+    pageSize: PEOPLE_PAGE_SIZE,
+  };
+}
+
+/** Shared filter so the list and its count can never disagree. */
+async function peopleWhere(
+  actor: Actor,
+  opts: { search?: string; ventureId?: string; includeArchived?: boolean },
+) {
+  const scopeIds = visibleVentureIds(actor);
+
+  let membershipVentureFilter: string[] | undefined;
+  if (scopeIds === undefined) {
+    membershipVentureFilter = opts.ventureId ? [opts.ventureId] : undefined;
+  } else if (opts.ventureId) {
+    membershipVentureFilter = scopeIds.includes(opts.ventureId) ? [opts.ventureId] : [];
+  } else {
+    membershipVentureFilter = scopeIds;
+  }
+
+  return {
+    ...(opts.includeArchived ? {} : { archivedAt: null }),
+    ...(membershipVentureFilter === undefined
+      ? {}
+      : {
+          memberships: {
+            some: { leftAt: null, ventureId: { in: membershipVentureFilter } },
+          },
+        }),
+    ...(opts.search
+      ? {
+          user: {
+            OR: [
+              { name: { contains: opts.search, mode: "insensitive" as const } },
+              { email: { contains: opts.search, mode: "insensitive" as const } },
+            ],
+          },
+        }
+      : {}),
+  };
+}
+
 export async function listPeople(
   actor: Actor,
   opts: { search?: string; ventureId?: string; includeArchived?: boolean } = {},

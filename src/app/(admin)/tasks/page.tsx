@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireActiveActor } from "@/lib/auth/actor";
-import { listTasks } from "@/modules/tasks/task.service";
+import { listTasks, countTasks, BOARD_TASK_LIMIT } from "@/modules/tasks/task.service";
 import { listVentures } from "@/modules/ventures/venture.service";
 import { isSuperAdmin } from "@/lib/permissions/types";
 import { PageHeader, EmptyState, Card } from "@/components/ui/Card";
@@ -19,14 +19,21 @@ export default async function TasksPage({
   const params = await searchParams;
   const actor = await requireActiveActor();
 
-  const [tasks, ventures] = await Promise.all([
-    listTasks(actor, {
-      ventureId: params.venture,
-      search: params.q,
-      mineOnly: params.mine === "1",
-    }),
+  const filters = {
+    ventureId: params.venture,
+    search: params.q,
+    mineOnly: params.mine === "1",
+  };
+
+  const [tasks, totalMatching, ventures] = await Promise.all([
+    listTasks(actor, filters),
+    countTasks(actor, filters),
     listVentures(actor),
   ]);
+
+  // A board cannot paginate sensibly, so say plainly when it is showing a
+  // subset rather than quietly dropping the rest.
+  const truncated = totalMatching > tasks.length;
 
   // Managers and admins may move cards; members may not drag tasks backwards,
   // which the server enforces regardless of what the UI allows.
@@ -142,7 +149,15 @@ export default async function TasksPage({
           }
         />
       ) : (
-        <KanbanBoard tasks={board} canMove={canManage} />
+        <>
+          {truncated && (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              Showing the first {BOARD_TASK_LIMIT} of {totalMatching} tasks. Filter by
+              venture or search to narrow the board.
+            </div>
+          )}
+          <KanbanBoard tasks={board} canMove={canManage} />
+        </>
       )}
     </>
   );

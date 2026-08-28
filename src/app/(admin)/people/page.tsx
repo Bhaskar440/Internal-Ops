@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireActiveActor } from "@/lib/auth/actor";
-import { listPeople } from "@/modules/people/person.service";
+import { listPeoplePaged } from "@/modules/people/person.service";
 import { listVentures } from "@/modules/ventures/venture.service";
 import { isSuperAdmin } from "@/lib/permissions/types";
 import { Card, PageHeader, EmptyState, Badge } from "@/components/ui/Card";
@@ -20,22 +20,39 @@ const STATUS_TONE = {
 export default async function PeoplePage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; venture?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; venture?: string; status?: string; page?: string }>;
 }) {
   const params = await searchParams;
   const actor = await requireActiveActor();
   const admin = isSuperAdmin(actor);
 
-  const [people, ventures] = await Promise.all([
-    listPeople(actor, { search: params.q, ventureId: params.venture }),
+  const currentPage = params.page ? Math.max(1, Number(params.page)) : 1;
+
+  const [result, ventures] = await Promise.all([
+    listPeoplePaged(actor, {
+      search: params.q,
+      ventureId: params.venture,
+      page: currentPage,
+    }),
     listVentures(actor),
   ]);
 
   const filtered = params.status
-    ? people.filter((p) => p.accountStatus === params.status)
-    : people;
+    ? result.people.filter((p) => p.accountStatus === params.status)
+    : result.people;
 
   const hasFilters = Boolean(params.q || params.venture || params.status);
+  const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
+
+  // Preserve the active filters when moving between pages.
+  const pageQuery = (n: number) => {
+    const q = new URLSearchParams();
+    if (params.q) q.set("q", params.q);
+    if (params.venture) q.set("venture", params.venture);
+    if (params.status) q.set("status", params.status);
+    q.set("page", String(n));
+    return `/people?${q.toString()}`;
+  };
 
   return (
     <>
@@ -242,6 +259,29 @@ export default async function PeoplePage({
               ))}
             </tbody>
           </table>
+
+          {totalPages > 1 && (
+            <nav
+              aria-label="Pagination"
+              className="mt-4 flex items-center justify-between"
+            >
+              <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                Page {result.page} of {totalPages} · {result.total} people
+              </span>
+              <div className="flex gap-2">
+                {result.page > 1 && (
+                  <Link href={pageQuery(result.page - 1)}>
+                    <Button variant="secondary">Previous</Button>
+                  </Link>
+                )}
+                {result.page < totalPages && (
+                  <Link href={pageQuery(result.page + 1)}>
+                    <Button variant="secondary">Next</Button>
+                  </Link>
+                )}
+              </div>
+            </nav>
+          )}
         </div>
       )}
     </>
