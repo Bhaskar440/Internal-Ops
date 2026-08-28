@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { prisma } from "@/lib/db/client";
 import { createVenture } from "@/modules/ventures/venture.service";
-import { createPerson, setMembership, setAccountStatus } from "@/modules/people/person.service";
+import { createPerson, setAccountStatus } from "@/modules/people/person.service";
 import { createTask, changeTaskStatus, listTasks } from "@/modules/tasks/task.service";
 import { saveManualEntry, startTimer, stopTimer } from "@/modules/time/time.service";
 import { getMyDay, submitLog, approveLog } from "@/modules/dailyLogs/dailyLog.service";

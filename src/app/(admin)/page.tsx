@@ -2,13 +2,20 @@ import Link from "next/link";
 import { requireActiveActor } from "@/lib/auth/actor";
 import { listVentures } from "@/modules/ventures/venture.service";
 import { listPeople, listPendingRegistrations } from "@/modules/people/person.service";
-import { portfolioSummary, hoursToday, venturePerformance } from "@/modules/reports/report.service";
+import {
+  portfolioSummary,
+  hoursToday,
+  venturePerformance,
+  attendanceSnapshot,
+  workloadSnapshot,
+} from "@/modules/reports/report.service";
 import { listPendingApprovals, listMissingSubmissions } from "@/modules/dailyLogs/dailyLog.service";
 import { expiringDocuments } from "@/modules/hr/hr.service";
 import { isSuperAdmin } from "@/lib/permissions/types";
 import { Card, PageHeader, EmptyState, Badge } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatMinutes, formatEfficiency } from "@/lib/money/efficiency";
+import { DashboardFilters } from "./DashboardFilters";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Overview" };
@@ -19,7 +26,12 @@ export const metadata = { title: "Overview" };
  * Shows what needs action now: the four KPI cards, venture performance, and a
  * "needs attention" list that links straight through to the work.
  */
-export default async function OverviewPage() {
+export default async function OverviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ venture?: string }>;
+}) {
+  const params = await searchParams;
   const actor = await requireActiveActor();
   const admin = isSuperAdmin(actor);
   const isManager = admin || [...actor.memberships.values()].includes("MANAGER");
@@ -31,11 +43,16 @@ export default async function OverviewPage() {
       admin ? listPendingRegistrations(actor) : Promise.resolve([]),
       portfolioSummary(actor),
       hoursToday(actor),
-      venturePerformance(actor),
+      venturePerformance(actor, { ventureId: params.venture }),
       isManager ? listPendingApprovals(actor) : Promise.resolve([]),
       isManager ? listMissingSubmissions(actor) : Promise.resolve([]),
       admin ? expiringDocuments(actor) : Promise.resolve([]),
     ]);
+
+  const [attendance, workload] = await Promise.all([
+    attendanceSnapshot(actor),
+    workloadSnapshot(actor),
+  ]);
 
   const activePeople = people.filter((p) => p.accountStatus === "ACTIVE").length;
 
@@ -84,6 +101,11 @@ export default async function OverviewPage() {
             )}
           </div>
         }
+      />
+
+      <DashboardFilters
+        ventures={ventures.map((v) => ({ id: v.id, name: v.name }))}
+        selected={params.venture}
       />
 
       {/* KPI cards (§9) */}
@@ -202,7 +224,162 @@ export default async function OverviewPage() {
           </div>
         </section>
       </div>
+
+      {/* Attendance and workload (§9) */}
+      <div className="mt-8 grid gap-6 lg:grid-cols-3">
+        <section>
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Today&rsquo;s attendance
+          </h2>
+          <Card>
+            <div className="p-4">
+              {attendance.totalExpected === 0 ? (
+                <p className="py-4 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                  Nobody is assigned to a venture yet.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  <AttendanceRow
+                    label="Present"
+                    count={attendance.present}
+                    total={attendance.totalExpected}
+                    tone="bg-green-500"
+                  />
+                  <AttendanceRow
+                    label="Remote"
+                    count={attendance.remote}
+                    total={attendance.totalExpected}
+                    tone="bg-blue-500"
+                  />
+                  <AttendanceRow
+                    label="On leave"
+                    count={attendance.onLeave}
+                    total={attendance.totalExpected}
+                    tone="bg-zinc-400"
+                  />
+                  <AttendanceRow
+                    label="Absent"
+                    count={attendance.absent}
+                    total={attendance.totalExpected}
+                    tone="bg-red-500"
+                  />
+                  <AttendanceRow
+                    label="No submission"
+                    count={attendance.noSubmission}
+                    total={attendance.totalExpected}
+                    tone="bg-amber-500"
+                  />
+                </ul>
+              )}
+            </div>
+          </Card>
+        </section>
+
+        <section className="lg:col-span-2">
+          <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            Workload
+          </h2>
+
+          {workload.length === 0 ? (
+            <EmptyState
+              title="Nothing assigned"
+              description="Workload appears once people are assigned to open tasks."
+            />
+          ) : (
+            <Card>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                      <th className="px-4 pb-2 pt-3 font-medium">Person</th>
+                      <th className="px-4 pb-2 pt-3 font-medium">Venture</th>
+                      <th className="px-4 pb-2 pt-3 text-right font-medium">Assigned</th>
+                      <th className="px-4 pb-2 pt-3 text-right font-medium">Logged</th>
+                      <th className="px-4 pb-2 pt-3 text-right font-medium">Capacity</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {workload.slice(0, 10).map((w) => (
+                      <tr
+                        key={w.personId}
+                        className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
+                      >
+                        <td className="px-4 py-2.5">
+                          <Link
+                            href={`/people/${w.personId}?tab=work`}
+                            className="text-zinc-900 hover:underline dark:text-zinc-100"
+                          >
+                            {w.personName}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-zinc-500 dark:text-zinc-400">
+                          {w.ventureNames.join(", ")}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          {formatMinutes(w.assignedEstimateMinutes)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          {formatMinutes(w.loggedMinutes)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {w.capacityPercent === null ? (
+                            <span className="text-zinc-400">—</span>
+                          ) : (
+                            <span
+                              className={
+                                w.capacityPercent > 100
+                                  ? "font-medium tabular-nums text-red-600 dark:text-red-400"
+                                  : w.capacityPercent > 80
+                                    ? "font-medium tabular-nums text-amber-600 dark:text-amber-400"
+                                    : "tabular-nums text-zinc-600 dark:text-zinc-400"
+                              }
+                            >
+                              {w.capacityPercent.toFixed(0)}%
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
+        </section>
+      </div>
     </>
+  );
+}
+
+/** One attendance status with a proportional bar (§9). */
+function AttendanceRow({
+  label,
+  count,
+  total,
+  tone,
+}: {
+  label: string;
+  count: number;
+  total: number;
+  tone: string;
+}) {
+  const pct = total === 0 ? 0 : (count / total) * 100;
+  return (
+    <li className="flex items-center gap-3 text-sm">
+      <span className="w-28 shrink-0 text-zinc-600 dark:text-zinc-400">{label}</span>
+      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+        <span
+          className={`block h-full rounded-full ${tone}`}
+          style={{ width: `${pct}%` }}
+        />
+      </span>
+      <span className="w-16 shrink-0 text-right tabular-nums text-zinc-900 dark:text-zinc-100">
+        {count}
+        <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">
+          {pct.toFixed(0)}%
+        </span>
+      </span>
+    </li>
   );
 }
 

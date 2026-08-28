@@ -35,8 +35,13 @@ export default async function LoginPage() {
           </a>
         </p>
 
-        <p className="mt-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
-          Accounts are created by an administrator.
+        <p className="mt-4 text-center text-sm">
+          <a
+            href="/register"
+            className="text-blue-600 hover:underline dark:text-blue-400"
+          >
+            Working with us as a freelancer? Request access
+          </a>
         </p>
       </div>
     </div>

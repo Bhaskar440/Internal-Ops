@@ -17,6 +17,7 @@ export const metadata = { title: "Reports" };
 
 const TABS = [
   { key: "hours", label: "Hours" },
+  { key: "attendance", label: "Attendance" },
   { key: "ventures", label: "Venture performance" },
   { key: "people", label: "Person performance" },
   { key: "tasks", label: "Task efficiency" },
@@ -148,6 +149,7 @@ export default async function ReportsPage({
       </nav>
 
       {tab === "hours" && <HoursTable actor={actor} filters={filters} />}
+      {tab === "attendance" && <AttendanceTable actor={actor} filters={filters} />}
       {tab === "ventures" && <VentureTable actor={actor} filters={filters} />}
       {tab === "people" && <PeopleTable actor={actor} filters={filters} />}
       {tab === "tasks" && <TaskTable actor={actor} filters={filters} />}
@@ -359,6 +361,71 @@ async function TaskTable({ actor, filters }: Props) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * Attendance report (§33).
+ *
+ * Reuses personPerformance, which already counts submitted days by status, so
+ * the report and the person page can never disagree.
+ */
+async function AttendanceTable({ actor, filters }: Props) {
+  const rows = await personPerformance(actor, filters);
+  if (rows.length === 0) return <EmptyState title="No attendance recorded for these filters" />;
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      present: acc.present + r.daysPresent,
+      remote: acc.remote + r.daysRemote,
+      leave: acc.leave + r.daysLeave,
+      absent: acc.absent + r.daysAbsent,
+    }),
+    { present: 0, remote: 0, leave: 0, absent: 0 },
+  );
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[700px] text-sm">
+        <thead>
+          <tr className="border-b border-zinc-300 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+            <th className="pb-2 pr-4 font-medium">Person</th>
+            <th className="pb-2 pr-4 text-right font-medium">Present</th>
+            <th className="pb-2 pr-4 text-right font-medium">Remote</th>
+            <th className="pb-2 pr-4 text-right font-medium">Leave</th>
+            <th className="pb-2 pr-4 text-right font-medium">Absent</th>
+            <th className="pb-2 text-right font-medium">Attendance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.personId} className="border-b border-zinc-200 dark:border-zinc-800">
+              <td className="py-2.5 pr-4 text-zinc-900 dark:text-zinc-100">{r.personName}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{r.daysPresent}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{r.daysRemote}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{r.daysLeave}</td>
+              <td className="py-2.5 pr-4 text-right tabular-nums">{r.daysAbsent}</td>
+              <td className="py-2.5 text-right font-medium tabular-nums">
+                {r.attendancePercent === null ? "—" : `${r.attendancePercent.toFixed(0)}%`}
+              </td>
+            </tr>
+          ))}
+          <tr className="font-medium">
+            <td className="py-2.5 pr-4">Total days</td>
+            <td className="py-2.5 pr-4 text-right tabular-nums">{totals.present}</td>
+            <td className="py-2.5 pr-4 text-right tabular-nums">{totals.remote}</td>
+            <td className="py-2.5 pr-4 text-right tabular-nums">{totals.leave}</td>
+            <td className="py-2.5 pr-4 text-right tabular-nums">{totals.absent}</td>
+            <td className="py-2.5" />
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="mt-4 text-xs text-zinc-500 dark:text-zinc-400">
+        Counts only days that were submitted. People who never submitted a day appear on the
+        dashboard as missing logs rather than as absent.
+      </p>
     </div>
   );
 }

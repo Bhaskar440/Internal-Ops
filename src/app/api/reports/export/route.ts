@@ -84,6 +84,24 @@ export async function GET(request: Request) {
         ],
       );
       filename = "person-performance";
+    } else if (type === "attendance") {
+      const rows = await personPerformance(actor, filters);
+      csv = toCsv(
+        rows.map((r) => ({
+          ...r,
+          attendance: r.attendancePercent === null ? "-" : r.attendancePercent.toFixed(1),
+        })),
+        [
+          { key: "personName", label: "Person" },
+          { key: "employmentType", label: "Employment type" },
+          { key: "daysPresent", label: "Present" },
+          { key: "daysRemote", label: "Remote" },
+          { key: "daysLeave", label: "Leave" },
+          { key: "daysAbsent", label: "Absent" },
+          { key: "attendance", label: "Attendance %" },
+        ],
+      );
+      filename = "attendance";
     } else if (type === "tasks") {
       const rows = await taskEfficiencyReport(actor, filters);
       csv = toCsv(

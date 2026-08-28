@@ -421,6 +421,160 @@ export async function hoursToday(actor: Actor): Promise<number> {
   return totalMinutes;
 }
 
+export type AttendanceSnapshot = {
+  present: number;
+  remote: number;
+  onLeave: number;
+  absent: number;
+  noSubmission: number;
+  totalExpected: number;
+};
+
+/**
+ * Today's attendance across the ventures the actor can see (§9).
+ *
+ * "No submission" is everyone expected to log who has not, so the four status
+ * counts plus that always add up to the number of active people.
+ */
+export async function attendanceSnapshot(
+  actor: Actor,
+  businessDate?: BusinessDate,
+): Promise<AttendanceSnapshot> {
+  const ventureIds = resolveVentureIds(actor);
+  if (ventureIds !== null && ventureIds?.length === 0) {
+    return { present: 0, remote: 0, onLeave: 0, absent: 0, noSubmission: 0, totalExpected: 0 };
+  }
+
+  const ventures = await prisma.venture.findMany({
+    where: { archivedAt: null, ...(ventureIds ? { id: { in: ventureIds } } : {}) },
+    select: { id: true, timezone: true },
+  });
+
+  const { currentBusinessDate } = await import("@/lib/timezone/businessDate");
+
+  let present = 0;
+  let remote = 0;
+  let onLeave = 0;
+  let absent = 0;
+  let totalExpected = 0;
+  let submitted = 0;
+
+  for (const venture of ventures) {
+    const date = businessDate ?? currentBusinessDate(venture.timezone);
+
+    const members = await prisma.ventureMembership.count({
+      where: {
+        ventureId: venture.id,
+        leftAt: null,
+        person: { archivedAt: null, user: { accountStatus: "ACTIVE" } },
+      },
+    });
+    totalExpected += members;
+
+    const logs = await prisma.dailyLog.groupBy({
+      by: ["attendanceStatus"],
+      where: { ventureId: venture.id, businessDate: toPrismaDate(date) },
+      _count: true,
+    });
+
+    for (const row of logs) {
+      submitted += row._count;
+      if (row.attendanceStatus === "PRESENT") present += row._count;
+      else if (row.attendanceStatus === "REMOTE") remote += row._count;
+      else if (row.attendanceStatus === "ON_LEAVE") onLeave += row._count;
+      else if (row.attendanceStatus === "ABSENT") absent += row._count;
+    }
+  }
+
+  return {
+    present,
+    remote,
+    onLeave,
+    absent,
+    noSubmission: Math.max(0, totalExpected - submitted),
+    totalExpected,
+  };
+}
+
+export type WorkloadRow = {
+  personId: string;
+  personName: string;
+  ventureNames: string[];
+  assignedEstimateMinutes: number;
+  loggedMinutes: number;
+  /** Logged against assigned estimate. Over 100% means more time than planned. */
+  capacityPercent: number | null;
+};
+
+/**
+ * Who is carrying how much open work (§9 Workload).
+ *
+ * Counts only tasks that are still open — completed work is history, not load.
+ */
+export async function workloadSnapshot(actor: Actor): Promise<WorkloadRow[]> {
+  const ventureIds = resolveVentureIds(actor);
+  if (ventureIds !== null && ventureIds?.length === 0) return [];
+
+  const people = await prisma.person.findMany({
+    where: {
+      archivedAt: null,
+      user: { accountStatus: "ACTIVE" },
+      ...(ventureIds
+        ? { memberships: { some: { ventureId: { in: ventureIds }, leftAt: null } } }
+        : {}),
+    },
+    select: {
+      id: true,
+      user: { select: { name: true } },
+      memberships: {
+        where: { leftAt: null },
+        select: { venture: { select: { name: true } } },
+      },
+    },
+  });
+
+  const rows: WorkloadRow[] = [];
+
+  for (const person of people) {
+    const assigned = await prisma.taskAssignee.findMany({
+      where: {
+        personId: person.id,
+        task: {
+          archivedAt: null,
+          status: { not: "DONE" },
+          ...(ventureIds ? { ventureId: { in: ventureIds } } : {}),
+        },
+      },
+      select: { task: { select: { id: true, estimatedMinutes: true } } },
+    });
+
+    if (assigned.length === 0) continue;
+
+    const estimate = assigned.reduce((s, a) => s + a.task.estimatedMinutes, 0);
+
+    const logged = await prisma.timeEntry.aggregate({
+      where: {
+        taskId: { in: assigned.map((a) => a.task.id) },
+        personId: person.id,
+        durationSeconds: { not: null },
+      },
+      _sum: { durationSeconds: true },
+    });
+    const loggedMinutes = Math.round((logged._sum.durationSeconds ?? 0) / 60);
+
+    rows.push({
+      personId: person.id,
+      personName: person.user.name,
+      ventureNames: [...new Set(person.memberships.map((m) => m.venture.name))],
+      assignedEstimateMinutes: estimate,
+      loggedMinutes,
+      capacityPercent: estimate === 0 ? null : (loggedMinutes / estimate) * 100,
+    });
+  }
+
+  return rows.sort((a, b) => b.assignedEstimateMinutes - a.assignedEstimateMinutes);
+}
+
 /** CSV export, built server-side from exactly what the caller may see (§62). */
 export function toCsv(rows: Record<string, unknown>[], columns: { key: string; label: string }[]): string {
   const escape = (v: unknown) => {
