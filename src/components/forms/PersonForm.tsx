@@ -29,16 +29,18 @@ export function PersonForm({
   const [state, formAction] = useActionState<PersonFormState, FormData>(action, {});
   const [copied, setCopied] = useState(false);
 
-  // Success: show the invitation link for the admin to share. Email delivery
-  // arrives in a later phase; until then this is copied manually.
+  // Success. The link is always shown: as the delivery method when email is not
+  // configured, and as a backup when it is.
   if (state.inviteUrl) {
     return (
       <div className="space-y-4">
         <div className="rounded-md border border-green-300 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/30">
           <p className="font-medium text-green-900 dark:text-green-200">Person created</p>
           <p className="mt-1 text-sm text-green-800 dark:text-green-300">
-            Their account is <strong>pending</strong> until they set a password using this
-            invitation link. It expires in 7 days.
+            {state.emailSent
+              ? "An invitation email is on its way. Their account is pending until they set a password."
+              : "Their account is pending until they set a password using this invitation link."}{" "}
+            The link expires in 7 days.
           </p>
         </div>
 
@@ -58,7 +60,11 @@ export function PersonForm({
               {copied ? "Copied" : "Copy"}
             </Button>
           </div>
-          <Hint>Send this to the person yourself — automatic email is not enabled yet.</Hint>
+          <Hint>
+            {state.emailSent
+              ? "Kept here as a backup in case the email does not arrive."
+              : "Email delivery is not configured, so send this to them yourself."}
+          </Hint>
         </div>
 
         <div className="flex gap-2">

@@ -15,11 +15,14 @@ import {
   setMembership,
 } from "@/modules/people/person.service";
 import { isAppError } from "@/lib/errors/appError";
+import { sendInvitationEmail, isEmailConfigured } from "@/lib/email/mailer";
 
 export type PersonFormState = {
   error?: string;
   fieldErrors?: Record<string, string>;
   inviteUrl?: string;
+  /** True when the invitation was emailed, so the UI need not show the link. */
+  emailSent?: boolean;
 };
 
 /**
@@ -58,7 +61,23 @@ export async function createPersonAction(
     revalidatePath("/");
 
     const base = process.env.AUTH_URL ?? "http://localhost:3000";
-    return { inviteUrl: `${base}/invite/${result.inviteToken}` };
+    const inviteUrl = `${base}/invite/${result.inviteToken}`;
+
+    // Email if a provider is configured. A send failure must not undo the
+    // person we just created — the link is valid either way, so fall back to
+    // showing it for the admin to pass on.
+    let emailSent = false;
+    if (isEmailConfigured()) {
+      const outcome = await sendInvitationEmail({
+        to: result.email,
+        name: parsed.data.name,
+        inviteUrl,
+        invitedBy: actor.name,
+      });
+      emailSent = outcome.sent;
+    }
+
+    return { inviteUrl, emailSent };
   } catch (e) {
     return { error: isAppError(e) ? e.message : "Could not create the person." };
   }

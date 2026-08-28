@@ -5,6 +5,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { writeAudit } from "@/lib/audit/audit";
+import { sendPasswordResetEmail, isEmailConfigured } from "@/lib/email/mailer";
 
 /**
  * Password reset (§63).
@@ -72,10 +73,13 @@ export async function requestPasswordReset(
   const base = process.env.AUTH_URL ?? "http://localhost:3000";
   const link = `${base}/reset-password/${token}`;
 
-  // With no mail provider configured, surface the link rather than silently
-  // dropping it. Once email is enabled this branch goes away.
-  const emailConfigured = Boolean(process.env.RESEND_API_KEY);
-  return emailConfigured ? { sent: true } : { sent: true, devLink: link };
+  // With a provider configured, email the link. Without one, surface it so an
+  // administrator can pass it on rather than it being silently dropped.
+  if (isEmailConfigured()) {
+    await sendPasswordResetEmail({ to: parsed.data.email, resetUrl: link });
+    return { sent: true };
+  }
+  return { sent: true, devLink: link };
 }
 
 const resetSchema = z

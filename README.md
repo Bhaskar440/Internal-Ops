@@ -161,12 +161,16 @@ are configured in the app, not in code.
 
 **Configure when ready:**
 
-- **Email delivery.** Invitation and password-reset links are currently shown
-  in the UI for an administrator to pass on. Set `RESEND_API_KEY` and add a
-  send call to switch to automatic email.
-- **Stale timer job.** `autoStopStaleTimers()` in `src/modules/time/time.service.ts`
-  should run nightly (Vercel Cron or any scheduler).
+- **Email delivery.** Set `RESEND_API_KEY` and `EMAIL_FROM` and invitations and
+  password resets are emailed automatically. Without them the links are shown
+  in the UI for an administrator to pass on — no code change either way.
+- **Scheduled jobs.** `/api/cron/stale-timers` stops abandoned timers and prunes
+  login-attempt rows. It needs `CRON_SECRET`; `vercel.json` already registers it
+  to run daily at 19:00 UTC.
 - **Error monitoring** — Sentry or equivalent.
+
+**Deploying:** see [DEPLOYMENT.md](DEPLOYMENT.md) for the full Vercel and
+managed-Postgres walkthrough.
 
 **Deliberately out of scope** (§86): bank transfers, tax calculation or filing,
 document file storage, accounting ledger, expense reimbursement, recruitment,
