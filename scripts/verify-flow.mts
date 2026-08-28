@@ -10,11 +10,15 @@ import { createRun, generateLines, getRun, lockRun, markLinePaid, findExceptions
 import { venturePerformance } from "@/modules/reports/report.service";
 import { formatEfficiency, formatMinutes } from "@/lib/money/efficiency";
 import type { Actor, ActorWithVenture } from "@/lib/permissions/types";
-import { currentBusinessDate } from "@/lib/timezone/businessDate";
+import { currentBusinessDate, toPrismaDate } from "@/lib/timezone/businessDate";
 
 /**
  * Walks the entire business flow end to end against the dev database, then
  * removes everything it created. Run with: npx tsx scripts/verify-flow.mts
+ *
+ * NOTE: it takes over the payroll run for the current month, so a demo run for
+ * that period is removed. Re-seed with `npm run db:demo` afterwards if you want
+ * the demo payroll back.
  */
 
 const S = `flow${Date.now().toString(36)}`;
@@ -55,6 +59,11 @@ async function main() {
 
   // Today in the venture timezone, so the daily-log edit window is open.
   const today = currentBusinessDate(venture.timezone);
+
+  // Payroll covers the month containing today, because that is where the
+  // approved hours land. Any run already there (from the demo seed or an
+  // earlier check) is cleared first so this stays repeatable.
+  const period = monthPeriod(Number(today.slice(0, 4)), Number(today.slice(5, 7)));
 
   const adminInVenture: ActorWithVenture = {
     ...admin,
@@ -133,6 +142,7 @@ async function main() {
   });
   console.log(`   10h recorded on ${today}`);
 
+
   step(6, "EMPLOYEE submits daily log");
   const days = await getMyDay(employee, today);
   const log = days.find((d) => d.ventureId === venture.id)!;
@@ -155,8 +165,16 @@ async function main() {
   console.log(`   venture efficiency: ${formatEfficiency(perf[0].efficiency)}`);
 
   step(9, "Pay period ends — payroll calculated");
-  const [ty, tm] = today.split("-").map(Number);
-  const period = monthPeriod(ty, tm);
+  // Clear any run left behind by an interrupted earlier check.
+  const stale = await prisma.payrollRun.findFirst({
+    where: { periodStart: toPrismaDate(period.start) },
+    select: { id: true },
+  });
+  if (stale) {
+    await prisma.payrollLine.deleteMany({ where: { payrollRunId: stale.id } });
+    await prisma.payrollRun.delete({ where: { id: stale.id } });
+  }
+
   const run = await createRun(admin, {
     periodStart: period.start,
     periodEnd: period.end,
@@ -186,7 +204,8 @@ async function main() {
   if (line) {
     await markLinePaid(admin, line.id, `BANK-${S}`);
     const paid = await getRun(admin, run.id);
-    console.log(`   payment status: ${paid.lines[0].paymentStatus}`);
+    const ourLine = paid.lines.find((l) => l.id === line.id);
+    console.log(`   payment status: ${ourLine?.paymentStatus ?? "not found"}`);
   }
 
   step(12, "Audit trail");
@@ -199,8 +218,13 @@ async function main() {
   for (const a of audits) console.log(`   ${a.action} on ${a.entityType}`);
 
   console.log("\nCleaning up...");
-  await prisma.payrollLine.deleteMany({ where: { payrollRunId: created.run } });
-  await prisma.payrollRun.delete({ where: { id: created.run } });
+  if (created.run) {
+    await prisma.payrollLine.deleteMany({ where: { payrollRunId: created.run } });
+    await prisma.payrollRun.delete({ where: { id: created.run } });
+  } else {
+    // Left an existing run in place; remove only this run's line for our person.
+    await prisma.payrollLine.deleteMany({ where: { personId: created.person } });
+  }
   await prisma.timeEntry.deleteMany({ where: { ventureId: created.venture } });
   await prisma.dailyLog.deleteMany({ where: { ventureId: created.venture } });
   await prisma.taskStatusHistory.deleteMany({ where: { taskId: created.task } });
