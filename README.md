@@ -171,9 +171,12 @@ are configured in the app, not in code.
 
 **Configure when ready:**
 
-- **Email delivery.** Set `RESEND_API_KEY` and `EMAIL_FROM` and invitations and
-  password resets are emailed automatically. Without them the links are shown
-  in the UI for an administrator to pass on — no code change either way.
+- **Email delivery.** Set `RESEND_API_KEY` and `EMAIL_FROM` to switch on all
+  outbound mail: invitations, password resets, and the three registration
+  emails (request received / an admin is needed / your account is ready).
+  Without them, invitation and reset links are shown in the UI for an
+  administrator to pass on — no code change either way. Resend's free tier is
+  3,000 emails a month, but it requires a domain you own and have verified.
 - **Scheduled jobs.** `/api/cron/stale-timers` stops abandoned timers and prunes
   login-attempt rows. It needs `CRON_SECRET`; `vercel.json` already registers it
   to run daily at 19:00 UTC.

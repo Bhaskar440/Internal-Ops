@@ -173,6 +173,114 @@ export async function sendPasswordResetEmail(args: {
   });
 }
 
+/**
+ * Acknowledge a self-registration (§7, §58).
+ *
+ * Deliberately says nothing about when approval will happen, and carries no
+ * link — there is nothing for them to do until an administrator acts.
+ */
+export async function sendRegistrationReceivedEmail(args: {
+  to: string;
+  name: string;
+}): Promise<SendResult> {
+  const body = `
+    <p style="margin:0 0 12px;">Hello ${escapeHtml(args.name)},</p>
+    <p style="margin:0 0 12px;">We have received your request for access to Portfolio Ops.</p>
+    <p style="margin:0;">An administrator will review it and assign the ventures you will be working on. You will get another email once your account is active.</p>
+  `;
+
+  return send({
+    to: args.to,
+    subject: "We have received your Portfolio Ops request",
+    html: layout({
+      heading: "Request received",
+      body,
+      footer: "No action is needed from you right now.",
+    }),
+    text: [
+      `Hello ${args.name},`,
+      "",
+      "We have received your request for access to Portfolio Ops.",
+      "",
+      "An administrator will review it and assign your ventures. You will get",
+      "another email once your account is active. No action is needed for now.",
+    ].join("\n"),
+  });
+}
+
+/**
+ * Tell an administrator that somebody is waiting.
+ *
+ * Without this a self-registration sits unseen until an admin happens to open
+ * the People page.
+ */
+export async function sendRegistrationPendingEmail(args: {
+  to: string;
+  adminName: string;
+  registrantName: string;
+  registrantEmail: string;
+  employmentType: string;
+  reviewUrl: string;
+}): Promise<SendResult> {
+  const body = `
+    <p style="margin:0 0 12px;">Hello ${escapeHtml(args.adminName)},</p>
+    <p style="margin:0 0 12px;"><strong>${escapeHtml(args.registrantName)}</strong> (${escapeHtml(args.registrantEmail)}) has requested access as a ${escapeHtml(args.employmentType.toLowerCase())}.</p>
+    <p style="margin:0;">They have no access to any venture until you approve them and assign their ventures.</p>
+  `;
+
+  return send({
+    to: args.to,
+    subject: `Access request from ${args.registrantName}`,
+    html: layout({
+      heading: "Someone is awaiting approval",
+      body,
+      cta: { label: "Review the request", url: args.reviewUrl },
+      footer: "Pay rates are never set by the person registering.",
+    }),
+    text: [
+      `Hello ${args.adminName},`,
+      "",
+      `${args.registrantName} (${args.registrantEmail}) has requested access as a ${args.employmentType.toLowerCase()}.`,
+      "",
+      "They have no access to any venture until you approve them.",
+      "",
+      "Review the request:",
+      args.reviewUrl,
+    ].join("\n"),
+  });
+}
+
+/** Tell someone their account is now active and they can sign in (§7). */
+export async function sendAccountApprovedEmail(args: {
+  to: string;
+  name: string;
+  signInUrl: string;
+}): Promise<SendResult> {
+  const body = `
+    <p style="margin:0 0 12px;">Hello ${escapeHtml(args.name)},</p>
+    <p style="margin:0;">Your Portfolio Ops account has been approved. You can now sign in with the password you chose when you registered.</p>
+  `;
+
+  return send({
+    to: args.to,
+    subject: "Your Portfolio Ops account is ready",
+    html: layout({
+      heading: "Your account is ready",
+      body,
+      cta: { label: "Sign in", url: args.signInUrl },
+      footer: "If you have forgotten your password, use the reset link on the sign-in page.",
+    }),
+    text: [
+      `Hello ${args.name},`,
+      "",
+      "Your Portfolio Ops account has been approved. You can now sign in with",
+      "the password you chose when you registered.",
+      "",
+      args.signInUrl,
+    ].join("\n"),
+  });
+}
+
 /** Escape user-supplied text before it goes into HTML. */
 function escapeHtml(value: string): string {
   return value

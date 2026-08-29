@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { writeAudit } from "@/lib/audit/audit";
 import { conflict, forbidden, notFound } from "@/lib/errors/appError";
 import { visibleVentureIds } from "@/lib/permissions/scopes";
+import { isEmailConfigured, sendAccountApprovedEmail } from "@/lib/email/mailer";
 import { isSuperAdmin, type Actor } from "@/lib/permissions/types";
 import type {
   CreatePersonInput,
@@ -458,7 +459,7 @@ export async function setAccountStatus(actor: Actor, input: SetAccountStatusInpu
     }
   }
 
-  return prisma.$transaction(async (tx) => {
+  const updated = await prisma.$transaction(async (tx) => {
     const after = await tx.user.update({
       where: { id: input.userId },
       data: { accountStatus: input.status },
@@ -484,6 +485,20 @@ export async function setAccountStatus(actor: Actor, input: SetAccountStatusInpu
 
     return after;
   });
+
+  // Tell someone their account is live, once the change has committed. A mail
+  // failure must not undo an approval that already happened.
+  const wasApproved = before.accountStatus === "PENDING" && input.status === "ACTIVE";
+  if (wasApproved && isEmailConfigured()) {
+    const base = process.env.AUTH_URL ?? "http://localhost:3000";
+    await sendAccountApprovedEmail({
+      to: updated.email,
+      name: updated.name,
+      signInUrl: `${base}/login`,
+    });
+  }
+
+  return updated;
 }
 
 /** Update profile details. Never touches pay (§52). */

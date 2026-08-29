@@ -9,6 +9,11 @@ import {
   checkSensitiveActionAllowed,
   recordSensitiveAction,
 } from "@/lib/auth/rateLimit";
+import {
+  isEmailConfigured,
+  sendRegistrationReceivedEmail,
+  sendRegistrationPendingEmail,
+} from "@/lib/email/mailer";
 
 /**
  * Freelancer self-registration (§7, §58).
@@ -126,6 +131,35 @@ export async function register(
       ipAddress: ip ?? null,
     });
   });
+
+  // Sent AFTER the transaction commits. A mail provider having a bad day must
+  // never roll back a registration that already succeeded.
+  if (isEmailConfigured()) {
+    const base = process.env.AUTH_URL ?? "http://localhost:3000";
+
+    await sendRegistrationReceivedEmail({
+      to: parsed.data.email,
+      name: parsed.data.name,
+    });
+
+    // Tell the administrators, so a request does not sit unseen until someone
+    // happens to open the People page.
+    const admins = await prisma.user.findMany({
+      where: { globalRole: "SUPER_ADMIN", accountStatus: "ACTIVE" },
+      select: { name: true, email: true },
+    });
+
+    for (const admin of admins) {
+      await sendRegistrationPendingEmail({
+        to: admin.email,
+        adminName: admin.name,
+        registrantName: parsed.data.name,
+        registrantEmail: parsed.data.email,
+        employmentType: parsed.data.employmentType,
+        reviewUrl: `${base}/people?status=PENDING`,
+      });
+    }
+  }
 
   return { done: true };
 }

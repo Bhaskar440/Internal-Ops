@@ -37,8 +37,9 @@ The three ventures are **Norvik Gold**, **Thought Agile** and **Falcon Brews**.
 
 Do **not** raise these as defects:
 
-- Invitation and password-reset links are shown on screen to copy by hand.
-  Automatic email is switched off until a mail provider is configured.
+- Invitation and password-reset links are shown on screen to copy by hand, and
+  registration sends no email. All of that switches on automatically once a mail
+  provider is configured — until then, nothing is emailed at all.
 - **My pay** says pay details are not shown. That is a deliberate setting.
 - Some money figures are demo data, not real payroll.
 
