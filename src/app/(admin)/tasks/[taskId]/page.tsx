@@ -298,6 +298,7 @@ export default async function TaskDetailPage({
                   <input type="hidden" name="ventureId" value={task.ventureId} />
                   <input
                     name="reason"
+                    aria-label="Reason for archiving this task"
                     placeholder="Reason (recorded in the audit log)"
                     className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                   />

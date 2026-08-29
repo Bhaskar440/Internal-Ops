@@ -53,6 +53,7 @@ const entrySelect = {
   taskId: true,
   ventureId: true,
   personId: true,
+  dailyLogId: true,
   source: true,
   startedAt: true,
   endedAt: true,
@@ -68,6 +69,7 @@ const entrySelect = {
 type EntryRow = {
   id: string;
   taskId: string | null;
+  dailyLogId: string | null;
   ventureId: string;
   personId: string;
   source: string;
@@ -432,6 +434,35 @@ export async function listEntriesForDay(
     orderBy: { startedAt: "asc" },
   });
   return entries.map((e) => toView(e as EntryRow));
+}
+
+/**
+ * Entries for many daily logs at once, grouped by log id.
+ *
+ * The approvals queue needs the breakdown for every submitted day on screen.
+ * Fetching them one log at a time turns one screen into a hundred round trips,
+ * so this batches them into a single query.
+ */
+export async function listEntriesForLogs(
+  dailyLogIds: string[],
+): Promise<Map<string, TimeEntryView[]>> {
+  const grouped = new Map<string, TimeEntryView[]>();
+  if (dailyLogIds.length === 0) return grouped;
+
+  const entries = await prisma.timeEntry.findMany({
+    where: { dailyLogId: { in: dailyLogIds } },
+    select: entrySelect,
+    orderBy: { startedAt: "asc" },
+  });
+
+  for (const entry of entries) {
+    if (!entry.dailyLogId) continue;
+    const list = grouped.get(entry.dailyLogId) ?? [];
+    list.push(toView(entry as EntryRow));
+    grouped.set(entry.dailyLogId, list);
+  }
+
+  return grouped;
 }
 
 /** Total minutes logged by a person on a business date, across all ventures. */

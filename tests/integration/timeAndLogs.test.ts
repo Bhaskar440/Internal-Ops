@@ -1,11 +1,22 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { testPrisma as prisma } from "../helpers/testPrisma";
 import { startTimer, stopTimer, saveManualEntry, getActiveTimer, listEntriesForDay } from "@/modules/time/time.service";
-import { getMyDay, submitLog, approveLog, getLog } from "@/modules/dailyLogs/dailyLog.service";
+import {
+  getMyDay,
+  submitLog,
+  approveLog,
+  getLog,
+  listPendingApprovals,
+  countPendingApprovals,
+} from "@/modules/dailyLogs/dailyLog.service";
 import { createTask, changeTaskStatus, listTasks } from "@/modules/tasks/task.service";
 import type { Actor, ActorWithVenture } from "@/lib/permissions/types";
 import { isAppError } from "@/lib/errors/appError";
-import { fromPrismaDate, currentBusinessDate } from "@/lib/timezone/businessDate";
+import {
+  fromPrismaDate,
+  toPrismaDate,
+  currentBusinessDate,
+} from "@/lib/timezone/businessDate";
 
 /** Today in the venture timezone — fixed dates would fall outside the 48h
  *  edit window as soon as the clock rolls past midnight. */
@@ -356,6 +367,70 @@ describe("approval lifecycle (§28, §31)", () => {
     await expect(submitLog(baseActor(), log.id)).rejects.toSatisfy(
       (e: unknown) => isAppError(e) && e.code === "CONFLICT",
     );
+  });
+});
+
+describe("approval queue ordering (§31)", () => {
+  it("lists the oldest submitted days first, so none get stranded", async () => {
+    const manager = ventureActor(
+      baseActor({
+        userId: ids.mgrUser,
+        personId: ids.mgrPerson,
+        memberships: new Map([[ids.venture, "MANAGER"]]),
+      }),
+      "MANAGER",
+    );
+
+    // Two submitted days for the employee, a week apart.
+    const older = "2026-08-10";
+    const newer = "2026-08-17";
+
+    for (const date of [older, newer]) {
+      const log = await prisma.dailyLog.upsert({
+        where: {
+          personId_ventureId_businessDate: {
+            personId: ids.empPerson,
+            ventureId: ids.venture,
+            businessDate: toPrismaDate(date),
+          },
+        },
+        update: { status: "SUBMITTED", submittedAt: new Date() },
+        create: {
+          personId: ids.empPerson,
+          ventureId: ids.venture,
+          businessDate: toPrismaDate(date),
+          status: "SUBMITTED",
+          attendanceStatus: "PRESENT",
+          submittedAt: new Date(),
+        },
+        select: { id: true },
+      });
+      await prisma.timeEntry.create({
+        data: {
+          personId: ids.empPerson,
+          ventureId: ids.venture,
+          dailyLogId: log.id,
+          source: "MANUAL",
+          startedAt: new Date(`${date}T09:00:00Z`),
+          endedAt: new Date(`${date}T10:00:00Z`),
+          durationSeconds: 3600,
+          businessDate: toPrismaDate(date),
+        },
+      });
+    }
+
+    const queue = await listPendingApprovals(manager);
+    const dates = queue.map((l) => l.businessDate);
+    const olderAt = dates.indexOf(older);
+    const newerAt = dates.indexOf(newer);
+
+    expect(olderAt).toBeGreaterThanOrEqual(0);
+    expect(newerAt).toBeGreaterThanOrEqual(0);
+    // The day waiting longest must come first.
+    expect(olderAt).toBeLessThan(newerAt);
+
+    // And the count reflects the true total, not just what fits on screen.
+    expect(await countPendingApprovals(manager)).toBeGreaterThanOrEqual(2);
   });
 });
 

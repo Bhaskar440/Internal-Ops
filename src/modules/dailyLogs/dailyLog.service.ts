@@ -12,7 +12,11 @@ import {
   businessDayEnd,
   type BusinessDate,
 } from "@/lib/timezone/businessDate";
-import { listEntriesForDay, type TimeEntryView } from "@/modules/time/time.service";
+import {
+  listEntriesForDay,
+  listEntriesForLogs,
+  type TimeEntryView,
+} from "@/modules/time/time.service";
 import { notify } from "@/modules/notifications/notification.service";
 
 /**
@@ -370,6 +374,31 @@ export async function rejectLog(
 }
 
 /** Logs awaiting review in the ventures this actor manages (§31). */
+/**
+ * How many submitted days one screen shows before asking the reviewer to work
+ * through them. Approvals is not paginated — a reviewer clears the queue rather
+ * than browsing it — so the page reports the true total instead (§61).
+ */
+export const APPROVAL_QUEUE_LIMIT = 100;
+
+/** Total submitted days awaiting this actor, so a truncated queue is visible. */
+export async function countPendingApprovals(actor: Actor): Promise<number> {
+  const managed = isSuperAdmin(actor)
+    ? undefined
+    : [...actor.memberships.entries()]
+        .filter(([, role]) => role === "MANAGER")
+        .map(([id]) => id);
+
+  if (managed && managed.length === 0) return 0;
+
+  return prisma.dailyLog.count({
+    where: {
+      status: "SUBMITTED",
+      ...(managed ? { ventureId: { in: managed } } : {}),
+    },
+  });
+}
+
 export async function listPendingApprovals(actor: Actor): Promise<DailyLogView[]> {
   const managed = isSuperAdmin(actor)
     ? undefined
@@ -385,21 +414,20 @@ export async function listPendingApprovals(actor: Actor): Promise<DailyLogView[]
       ...(managed ? { ventureId: { in: managed } } : {}),
     },
     select: logSelect,
-    orderBy: { businessDate: "desc" },
-    take: 100,
+    // Oldest first: the queue is worked through, not browsed. Newest-first
+    // would strand the days that have been waiting longest.
+    orderBy: { businessDate: "asc" },
+    take: APPROVAL_QUEUE_LIMIT,
   });
 
+  if (logs.length === 0) return [];
+
+  // One query for the whole queue rather than one per log. A hundred submitted
+  // days used to mean a hundred round trips.
+  const byLog = await listEntriesForLogs(logs.map((l) => l.id));
+
   const now = new Date();
-  const out: DailyLogView[] = [];
-  for (const log of logs) {
-    const entries = await listEntriesForDay(
-      log.personId,
-      log.ventureId,
-      fromPrismaDate(log.businessDate),
-    );
-    out.push(buildView(log as LogRow, entries, now));
-  }
-  return out;
+  return logs.map((log) => buildView(log as LogRow, byLog.get(log.id) ?? [], now));
 }
 
 /**

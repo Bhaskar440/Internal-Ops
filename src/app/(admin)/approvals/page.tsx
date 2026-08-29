@@ -1,5 +1,10 @@
 import { requireActiveActor } from "@/lib/auth/actor";
-import { listPendingApprovals, listMissingSubmissions } from "@/modules/dailyLogs/dailyLog.service";
+import {
+  listPendingApprovals,
+  countPendingApprovals,
+  listMissingSubmissions,
+  APPROVAL_QUEUE_LIMIT,
+} from "@/modules/dailyLogs/dailyLog.service";
 import { isSuperAdmin } from "@/lib/permissions/types";
 import { PageHeader, EmptyState, Card, Badge } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -27,10 +32,15 @@ export default async function ApprovalsPage() {
     );
   }
 
-  const [pending, missing] = await Promise.all([
+  const [pending, totalPending, missing] = await Promise.all([
     listPendingApprovals(actor),
+    countPendingApprovals(actor),
     listMissingSubmissions(actor),
   ]);
+
+  // The queue shows a fixed number so one screen stays workable. If more are
+  // waiting, say so — an unseen timesheet is an unpaid one.
+  const queueTruncated = totalPending > pending.length;
 
   return (
     <>
@@ -41,8 +51,15 @@ export default async function ApprovalsPage() {
 
       <section className="mb-8">
         <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          Awaiting review ({pending.length})
+          Awaiting review ({totalPending})
         </h2>
+
+        {queueTruncated && (
+          <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+            Showing the {APPROVAL_QUEUE_LIMIT} oldest of {totalPending} submitted days.
+            Approve or return some to see the rest.
+          </p>
+        )}
 
         {pending.length === 0 ? (
           <EmptyState title="No days awaiting review" />
@@ -110,6 +127,7 @@ export default async function ApprovalsPage() {
                       <input
                         name="reason"
                         required
+                        aria-label="Reason for returning this day"
                         placeholder="Reason for returning it"
                         className="min-w-40 flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                       />

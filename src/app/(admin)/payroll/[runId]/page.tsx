@@ -143,6 +143,7 @@ export default async function PayrollRunPage({
             <input
               name="reason"
               required
+              aria-label="Reason for voiding this payroll run"
               placeholder="Reason for voiding this run"
               className="min-w-40 flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
             />
@@ -203,6 +204,7 @@ export default async function PayrollRunPage({
                         <input type="hidden" name="runId" value={run.id} />
                         <input
                           name="reference"
+                          aria-label="Payment reference"
                           placeholder="Reference"
                           className="w-24 rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
                         />

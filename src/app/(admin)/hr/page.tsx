@@ -110,6 +110,7 @@ export default async function HrPage() {
                           <input type="hidden" name="assetId" value={a.id} />
                           <input
                             name="condition"
+                            aria-label="Condition on return"
                             placeholder="Condition"
                             className="w-28 rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
                           />

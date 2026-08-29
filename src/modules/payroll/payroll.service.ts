@@ -740,7 +740,9 @@ export async function listAdjustments(
       ...(opts.personId ? { personId: opts.personId } : {}),
       ...(opts.outstandingOnly ? { settledPayrollLineId: null } : {}),
     },
-    orderBy: { createdAt: "desc" },
+    // Unsettled first, so a long history of settled corrections can never push
+    // an outstanding one out of view — an unseen adjustment is an unpaid one.
+    orderBy: [{ settledPayrollLineId: { sort: "asc", nulls: "first" } }, { createdAt: "desc" }],
     take: 100,
     select: {
       id: true,

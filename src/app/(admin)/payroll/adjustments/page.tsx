@@ -96,6 +96,7 @@ export default async function AdjustmentsPage() {
                         <input
                           name="reason"
                           required
+                          aria-label="Reason for cancelling this adjustment"
                           placeholder="Reason for cancelling"
                           className="min-w-40 flex-1 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                         />

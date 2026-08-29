@@ -91,6 +91,7 @@ export default async function VentureSettingsPage({
                   <input type="hidden" name="id" value={venture.id} />
                   <input
                     name="reason"
+                    aria-label="Reason for archiving this venture"
                     placeholder="Reason (recorded in the audit log)"
                     className="flex-1 rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
                   />
