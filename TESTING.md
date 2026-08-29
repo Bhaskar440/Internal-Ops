@@ -194,6 +194,37 @@ Do **not** raise these as defects:
 | 12.4 | Click **Mark read** | The badge count drops | |
 | 12.5 🔒 | Compare what Kabir sees with what Neha sees | Each sees **only their own**. No overlap | |
 
+## 12a. Settings
+
+| # | Steps | Expected | Result |
+|---|---|---|---|
+| 12a.1 | As administrator, open **Settings** | Each venture's timezone, working week, log cutoff and currency, plus system switches | |
+| 12a.2 | Click **Edit** beside a venture | Takes you to that venture's settings | |
+| 12a.3 | Read the System section | Says whether email, scheduled jobs and pay visibility are configured. These are set at deployment, not from this screen | |
+| 12a.4 🔒 | Sign in as **neha@** and open `/settings` | Refused | |
+
+## 12b. My pay
+
+| # | Steps | Expected | Result |
+|---|---|---|---|
+| 12b.1 | As **neha@**, open **My pay** | Currently says pay details are not shown — the setting is off. **This is not a defect** | |
+| 12b.2 | *Only if the developer has switched it on:* look again | Your own approved hours and gross pay, and nothing about anyone else | |
+
+## 12c. Payroll corrections
+
+Do section 10 first — this needs a payroll run that has been locked and paid.
+
+| # | Steps | Expected | Result |
+|---|---|---|---|
+| 12c.1 | **Payroll → Adjustments** | Outstanding and settled lists, and a form to raise one | |
+| 12c.2 | Raise **+2500** for the person you marked paid, with a reason | Listed as outstanding, "settles next run" | |
+| 12c.3 | Reopen the paid run from section 10 | **The amount is unchanged.** Paid payroll is never rewritten | |
+| 12c.4 | Create a run for the **next** month and generate lines | That person's pay is 2500 higher than their hours alone | |
+| 12c.5 | Return to Adjustments | It now shows as **settled** | |
+| 12c.6 | Try to cancel the settled one | Refused — it is part of a paid run | |
+| 12c.7 | Raise **−500** and generate the following run | The amount is reduced by 500 | |
+| 12c.8 🔒 | As **aarav@** (manager), open `/payroll/adjustments` | Refused | |
+
 ## 13. HR records
 
 | # | Steps | Expected | Result |
