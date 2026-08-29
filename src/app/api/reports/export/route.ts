@@ -109,7 +109,10 @@ export async function GET(request: Request) {
           ...r,
           estimatedHours: minutesToHours(r.estimatedMinutes).toFixed(2),
           actualHours: minutesToHours(r.actualMinutes).toFixed(2),
-          varianceHours: minutesToHours(r.varianceMinutes).toFixed(2),
+          // Variance is signed — negative when a task came in under its
+          // estimate — so it cannot go through minutesToHours(), which
+          // rejects negatives as a guard against bad durations.
+          varianceHours: (r.varianceMinutes / 60).toFixed(2),
           efficiency: r.efficiency === null ? "-" : r.efficiency.toFixed(1),
         })),
         [

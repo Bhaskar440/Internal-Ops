@@ -122,6 +122,22 @@ describe("duration conversions (§15)", () => {
   });
 });
 
+describe("signed variance must not go through minutesToHours", () => {
+  it("rejects a negative duration, which is why variance is divided directly", () => {
+    // minutesToHours guards against bad durations by refusing negatives. A
+    // task finished UNDER its estimate has negative variance, so callers must
+    // divide by 60 themselves (or take the absolute value) rather than reuse
+    // this helper. The CSV export got this wrong and returned a 500.
+    expect(() => minutesToHours(-240)).toThrow(RangeError);
+
+    // The shape the export now uses.
+    expect((-240 / 60).toFixed(2)).toBe("-4.00");
+
+    // The shape the screens use.
+    expect(formatMinutes(Math.abs(-240))).toBe("4h");
+  });
+});
+
 describe("formatMinutes", () => {
   it("formats hours and minutes", () => {
     expect(formatMinutes(450)).toBe("7h 30m");
