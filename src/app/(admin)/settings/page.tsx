@@ -4,7 +4,7 @@ import { AccessDenied } from "@/components/layout/AccessDenied";
 import { listVentures } from "@/modules/ventures/venture.service";
 import { isEmailConfigured } from "@/lib/email/mailer";
 import { isMyPayEnabled } from "@/modules/compensation/compensation.service";
-import { Card, PageHeader, Badge } from "@/components/ui/Card";
+import { Card, PageHeader, Badge, EmptyState } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { WEEKDAYS } from "@/modules/ventures/venture.schema";
 
@@ -83,6 +83,17 @@ export default async function SettingsPage() {
           hours are counted.
         </p>
 
+        {ventures.length === 0 ? (
+          <EmptyState
+            title="No ventures yet"
+            description="Create a venture and its timezone, working week and daily-log cutoff appear here."
+            action={
+              <Link href="/ventures/new">
+                <Button>Create venture</Button>
+              </Link>
+            }
+          />
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
@@ -135,12 +146,15 @@ export default async function SettingsPage() {
             </tbody>
           </table>
         </div>
+        )}
 
-        <div className="mt-4">
-          <Link href="/ventures/new">
-            <Button variant="secondary">Create venture</Button>
-          </Link>
-        </div>
+        {ventures.length > 0 && (
+          <div className="mt-4">
+            <Link href="/ventures/new">
+              <Button variant="secondary">Create venture</Button>
+            </Link>
+          </div>
+        )}
       </section>
 
       <section>
