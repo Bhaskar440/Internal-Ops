@@ -68,6 +68,7 @@ Do **not** raise these as defects:
 | 2.5 | As **administrator**, go to People and filter Status = Pending | Your new registration is listed | |
 | 2.6 | Click **Approve** on it | Status becomes active | |
 | 2.7 | Now sign in as that account | Works. It sees no venture until assigned one | |
+| 2.8 | *Only if email is configured:* check the inbox used in 2.2 | Two emails — one acknowledging the request, one saying the account is ready. Administrators also get one when someone registers | |
 
 ## 3. Ventures
 
