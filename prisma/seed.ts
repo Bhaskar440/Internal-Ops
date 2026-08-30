@@ -17,8 +17,24 @@ if (!connectionString) throw new Error("DATABASE_URL is not set.");
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
 
 const SUPER_ADMIN_EMAIL = process.env.SEED_SUPER_ADMIN_EMAIL ?? "admin@portfolioops.local";
-const SUPER_ADMIN_PASSWORD = process.env.SEED_SUPER_ADMIN_PASSWORD ?? "ChangeMe!2026";
+const SUPER_ADMIN_PASSWORD = process.env.SEED_SUPER_ADMIN_PASSWORD ?? "";
 const SUPER_ADMIN_NAME = process.env.SEED_SUPER_ADMIN_NAME ?? "Ops Admin";
+
+/**
+ * There is deliberately no default password. A fallback like "ChangeMe!2026"
+ * ships a known credential for the account that controls payroll, and the
+ * "change it later" step is exactly the one that gets skipped.
+ */
+if (SUPER_ADMIN_PASSWORD.length < 12) {
+  throw new Error(
+    [
+      "SEED_SUPER_ADMIN_PASSWORD must be set to at least 12 characters when seeding.",
+      "Pass it for this one command instead of storing it in .env:",
+      "  PowerShell:  $env:SEED_SUPER_ADMIN_PASSWORD = 'your-password'; npm run db:seed",
+      "  Bash:        SEED_SUPER_ADMIN_PASSWORD='your-password' npm run db:seed",
+    ].join("\n"),
+  );
+}
 
 /** Initial ventures (§84). Editable in-app; these are just starting rows. */
 const VENTURES = [
