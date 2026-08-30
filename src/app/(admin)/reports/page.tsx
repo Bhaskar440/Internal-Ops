@@ -300,7 +300,20 @@ async function PeopleTable({ actor, filters }: Props) {
                 {formatEfficiency(r.efficiency)}
               </td>
               <td className="py-2.5 text-right tabular-nums">
-                {r.attendancePercent === null ? "—" : `${r.attendancePercent.toFixed(0)}%`}
+                {r.workingDaysInPeriod !== null ? (
+                  <span title="Days worked out of working days in this period">
+                    {r.daysWorked} / {r.workingDaysInPeriod}
+                    <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">
+                      {r.attendancePercent === null
+                        ? ""
+                        : `${r.attendancePercent.toFixed(0)}%`}
+                    </span>
+                  </span>
+                ) : r.attendancePercent === null ? (
+                  "—"
+                ) : (
+                  `${r.attendancePercent.toFixed(0)}%`
+                )}
               </td>
             </tr>
           ))}
@@ -407,7 +420,20 @@ async function AttendanceTable({ actor, filters }: Props) {
               <td className="py-2.5 pr-4 text-right tabular-nums">{r.daysLeave}</td>
               <td className="py-2.5 pr-4 text-right tabular-nums">{r.daysAbsent}</td>
               <td className="py-2.5 text-right font-medium tabular-nums">
-                {r.attendancePercent === null ? "—" : `${r.attendancePercent.toFixed(0)}%`}
+                {r.workingDaysInPeriod !== null ? (
+                  <span title="Days worked out of working days in this period">
+                    {r.daysWorked} / {r.workingDaysInPeriod}
+                    <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">
+                      {r.attendancePercent === null
+                        ? ""
+                        : `${r.attendancePercent.toFixed(0)}%`}
+                    </span>
+                  </span>
+                ) : r.attendancePercent === null ? (
+                  "—"
+                ) : (
+                  `${r.attendancePercent.toFixed(0)}%`
+                )}
               </td>
             </tr>
           ))}

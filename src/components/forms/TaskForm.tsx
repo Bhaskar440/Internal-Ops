@@ -48,6 +48,16 @@ export function TaskForm({
   };
 }) {
   const [state, formAction] = useActionState<TaskFormState, FormData>(action, {});
+
+  // After a failed submit the server echoes back what was typed, so nothing is
+  // lost. On a fresh form there is nothing echoed and `initial` is used.
+  const kept = state.values;
+  const keptText = (field: string, fallback?: string | number) =>
+    typeof kept?.[field] === "string" ? (kept[field] as string) : (fallback ?? "");
+  const keptChecked = (personId: string, fallback: boolean) =>
+    Array.isArray(kept?.assigneeIds)
+      ? (kept.assigneeIds as string[]).includes(personId)
+      : fallback;
   const [ventureId, setVentureId] = useState(initial?.ventureId ?? ventures[0]?.id ?? "");
   const [showFee, setShowFee] = useState(false);
 
@@ -86,7 +96,7 @@ export function TaskForm({
           name="title"
           required
           autoFocus={!isEdit}
-          defaultValue={initial?.title}
+          defaultValue={keptText("title", initial?.title)}
           placeholder="Redesign the venture dashboard"
         />
         <FieldError>{state.fieldErrors?.title}</FieldError>
@@ -98,7 +108,7 @@ export function TaskForm({
           id="description"
           name="description"
           rows={3}
-          defaultValue={initial?.description}
+          defaultValue={keptText("description", initial?.description)}
           className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
           placeholder="What does done look like?"
         />
@@ -114,7 +124,7 @@ export function TaskForm({
             step="0.25"
             min="0.25"
             required
-            defaultValue={initial?.estimatedHours}
+            defaultValue={keptText("estimatedHours", initial?.estimatedHours)}
             placeholder="8"
           />
           <Hint>Required. Efficiency is measured against this.</Hint>
@@ -123,7 +133,7 @@ export function TaskForm({
 
         <div>
           <Label htmlFor="priority">Priority</Label>
-          <Select id="priority" name="priority" defaultValue={initial?.priority ?? "MEDIUM"}>
+          <Select id="priority" name="priority" defaultValue={keptText("priority", initial?.priority ?? "MEDIUM")}>
             {TASK_PRIORITIES.map((p) => (
               <option key={p.value} value={p.value}>
                 {p.label}
@@ -134,7 +144,12 @@ export function TaskForm({
 
         <div>
           <Label htmlFor="dueDate">Due date</Label>
-          <Input id="dueDate" name="dueDate" type="date" defaultValue={initial?.dueDate} />
+          <Input
+            id="dueDate"
+            name="dueDate"
+            type="date"
+            defaultValue={keptText("dueDate", initial?.dueDate)}
+          />
           <FieldError>{state.fieldErrors?.dueDate}</FieldError>
         </div>
       </div>
@@ -158,7 +173,7 @@ export function TaskForm({
                   type="checkbox"
                   name="assigneeIds"
                   value={m.personId}
-                  defaultChecked={initial?.assigneeIds?.includes(m.personId)}
+                  defaultChecked={keptChecked(m.personId, Boolean(initial?.assigneeIds?.includes(m.personId)))}
                   className="h-3.5 w-3.5 accent-blue-600"
                 />
                 {m.name}

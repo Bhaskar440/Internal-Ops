@@ -14,15 +14,22 @@ export const metadata = { title: "Tasks" };
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ venture?: string; mine?: string; q?: string }>;
+  searchParams: Promise<{ venture?: string; mine?: string; q?: string; archived?: string }>;
 }) {
   const params = await searchParams;
   const actor = await requireActiveActor();
+
+  // Archived tasks are hidden from the board but never deleted — their hours
+  // still count towards reporting and payroll (§47). This is where you go to
+  // find one again.
+  const showArchived = params.archived === "1";
 
   const filters = {
     ventureId: params.venture,
     search: params.q,
     mineOnly: params.mine === "1",
+    includeArchived: showArchived,
+    archivedOnly: showArchived,
   };
 
   const [tasks, totalMatching, ventures] = await Promise.all([
@@ -118,6 +125,16 @@ export default async function TasksPage({
             />
             Only mine
           </label>
+          <label className="flex cursor-pointer items-center gap-2 rounded-md border border-zinc-300 px-3 py-2 text-sm has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50 dark:border-zinc-700 dark:has-[:checked]:bg-amber-950/40">
+            <input
+              type="checkbox"
+              name="archived"
+              value="1"
+              defaultChecked={showArchived}
+              className="h-3.5 w-3.5 accent-amber-600"
+            />
+            Archived
+          </label>
           <Button variant="secondary" type="submit">
             Apply
           </Button>
@@ -150,6 +167,14 @@ export default async function TasksPage({
         />
       ) : (
         <>
+          {showArchived && (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              Showing <strong>archived</strong> tasks. They are hidden from the live board
+              but nothing was deleted — their logged hours still count towards reports and
+              payroll. Untick &ldquo;Archived&rdquo; to return to the board.
+            </div>
+          )}
+
           {truncated && (
             <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
               Showing the first {BOARD_TASK_LIMIT} of {totalMatching} tasks. Filter by

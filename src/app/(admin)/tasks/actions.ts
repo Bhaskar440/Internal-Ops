@@ -12,7 +12,28 @@ import {
 } from "@/modules/tasks/task.service";
 import { isAppError } from "@/lib/errors/appError";
 
-export type TaskFormState = { error?: string; fieldErrors?: Record<string, string> };
+export type TaskFormState = {
+  error?: string;
+  fieldErrors?: Record<string, string>;
+  /**
+   * What the person typed, echoed back so a validation error does not wipe the
+   * form. Without this a single bad field costs them everything they entered.
+   */
+  values?: Record<string, string | string[]>;
+};
+
+/** Capture the submitted fields so they can be restored after a failed submit. */
+function submittedValues(formData: FormData): Record<string, string | string[]> {
+  return {
+    ventureId: String(formData.get("ventureId") ?? ""),
+    title: String(formData.get("title") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    estimatedHours: String(formData.get("estimatedHours") ?? ""),
+    priority: String(formData.get("priority") ?? "MEDIUM"),
+    dueDate: String(formData.get("dueDate") ?? ""),
+    assigneeIds: formData.getAll("assigneeIds").map(String),
+  };
+}
 
 function collectFieldErrors(issues: { path: PropertyKey[]; message: string }[]) {
   const fieldErrors: Record<string, string> = {};
@@ -46,6 +67,7 @@ export async function createTaskAction(
       return {
         error: "Check the highlighted fields.",
         fieldErrors: collectFieldErrors(parsed.error.issues),
+        values: submittedValues(formData),
       };
     }
 
@@ -53,7 +75,10 @@ export async function createTaskAction(
     await createTask(actor, parsed.data);
     ventureId = parsed.data.ventureId;
   } catch (e) {
-    return { error: isAppError(e) ? e.message : "Could not create the task." };
+    return {
+      error: isAppError(e) ? e.message : "Could not create the task.",
+      values: submittedValues(formData),
+    };
   }
 
   revalidatePath("/tasks");
@@ -83,6 +108,7 @@ export async function updateTaskAction(
       return {
         error: "Check the highlighted fields.",
         fieldErrors: collectFieldErrors(parsed.error.issues),
+        values: submittedValues(formData),
       };
     }
 
@@ -93,7 +119,10 @@ export async function updateTaskAction(
     revalidatePath(`/tasks/${parsed.data.taskId}`);
     return {};
   } catch (e) {
-    return { error: isAppError(e) ? e.message : "Could not update the task." };
+    return {
+      error: isAppError(e) ? e.message : "Could not update the task.",
+      values: submittedValues(formData),
+    };
   }
 }
 

@@ -146,6 +146,8 @@ export async function listTasks(
     assigneePersonId?: string;
     search?: string;
     includeArchived?: boolean;
+    /** Show ONLY archived tasks — the archive view, rather than the board. */
+    archivedOnly?: boolean;
     mineOnly?: boolean;
     limit?: number;
   } = {},
@@ -165,7 +167,11 @@ export async function listTasks(
   const tasks = await prisma.task.findMany({
     where: {
       ...(ventureFilter ? { ventureId: ventureFilter } : {}),
-      ...(opts.includeArchived ? {} : { archivedAt: null }),
+      ...(opts.archivedOnly
+        ? { archivedAt: { not: null } }
+        : opts.includeArchived
+          ? {}
+          : { archivedAt: null }),
       ...(opts.status ? { status: opts.status as never } : {}),
       ...(assigneePersonId ? { assignees: { some: { personId: assigneePersonId } } } : {}),
       ...(opts.search ? { title: { contains: opts.search, mode: "insensitive" as const } } : {}),
@@ -197,6 +203,7 @@ export async function countTasks(
     assigneePersonId?: string;
     search?: string;
     includeArchived?: boolean;
+    archivedOnly?: boolean;
     mineOnly?: boolean;
   } = {},
 ): Promise<number> {
@@ -214,7 +221,11 @@ export async function countTasks(
   return prisma.task.count({
     where: {
       ...(ventureFilter ? { ventureId: ventureFilter } : {}),
-      ...(opts.includeArchived ? {} : { archivedAt: null }),
+      ...(opts.archivedOnly
+        ? { archivedAt: { not: null } }
+        : opts.includeArchived
+          ? {}
+          : { archivedAt: null }),
       ...(opts.status ? { status: opts.status as never } : {}),
       ...(assigneePersonId ? { assignees: { some: { personId: assigneePersonId } } } : {}),
       ...(opts.search ? { title: { contains: opts.search, mode: "insensitive" as const } } : {}),
@@ -399,6 +410,17 @@ export async function changeTaskStatus(actor: ActorWithVenture, input: ChangeSta
     throw forbidden("Only a manager can move a task backwards.");
   }
 
+  // Completing a task is treated as final: its hours have fed efficiency
+  // reporting and may already sit in an approved day. Reopening one is
+  // possible but reserved for a Super Admin, and is always audited, so a
+  // genuine mistake can still be corrected without letting the board drift.
+  const reopening = before.status === "DONE" && input.status !== "DONE";
+  if (reopening && !isSuperAdmin(actor)) {
+    throw forbidden(
+      "A completed task cannot be reopened. Ask an administrator if this was marked done by mistake.",
+    );
+  }
+
   return prisma.$transaction(async (tx) => {
     const after = await tx.task.update({
       where: { id: input.taskId },
@@ -428,7 +450,11 @@ export async function changeTaskStatus(actor: ActorWithVenture, input: ChangeSta
       entityId: input.taskId,
       before: { status: before.status },
       after: { status: input.status },
-      reason: backwards ? "Moved backwards by manager" : undefined,
+      reason: reopening
+        ? "Completed task reopened by an administrator"
+        : backwards
+          ? "Moved backwards by manager"
+          : undefined,
     });
 
     const actuals = await actualMinutesByTask([after.id]);

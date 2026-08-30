@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useOptimistic, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import {
   DndContext,
@@ -112,16 +112,31 @@ function Card({ task, dragging }: { task: BoardTask; dragging?: boolean }) {
   );
 }
 
-function DraggableCard({ task, canMove }: { task: BoardTask; canMove: boolean }) {
+function DraggableCard({
+  task,
+  canMove,
+  mounted,
+}: {
+  task: BoardTask;
+  canMove: boolean;
+  /** Drag attributes are attached only after mount — see KanbanBoard. */
+  mounted: boolean;
+}) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: task.id,
     disabled: !canMove,
   });
 
+  // dnd-kit numbers its aria-describedby ids per DndContext instance, so the
+  // value rendered on the server never matches the one the browser generates.
+  // Attaching the attributes only after mount keeps the first client render
+  // identical to the server's, which is what hydration compares.
+  const dragProps = canMove && mounted ? { ...listeners, ...attributes } : {};
+
   return (
     <div
       ref={setNodeRef}
-      {...(canMove ? { ...listeners, ...attributes } : {})}
+      {...dragProps}
       className={`${canMove ? "cursor-grab active:cursor-grabbing" : ""} ${
         isDragging ? "opacity-40" : ""
       }`}
@@ -138,11 +153,13 @@ function Column({
   label,
   tasks,
   canMove,
+  mounted,
 }: {
   status: string;
   label: string;
   tasks: BoardTask[];
   canMove: boolean;
+  mounted: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const totalEstimate = tasks.reduce((s, t) => s + t.estimatedMinutes, 0);
@@ -170,7 +187,9 @@ function Column({
             Nothing here
           </p>
         ) : (
-          tasks.map((t) => <DraggableCard key={t.id} task={t} canMove={canMove} />)
+          tasks.map((t) => (
+            <DraggableCard key={t.id} task={t} canMove={canMove} mounted={mounted} />
+          ))
         )}
       </div>
     </div>
@@ -184,6 +203,11 @@ function Column({
  * authoritative: if it refuses — for example a member trying to drag a task
  * backwards — the card snaps back and the reason is shown.
  */
+/** A store that never emits: `mounted` only needs the server/client split. */
+function subscribeToNothing() {
+  return () => {};
+}
+
 export function KanbanBoard({
   tasks,
   canMove,
@@ -194,6 +218,15 @@ export function KanbanBoard({
   const [error, setError] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  // False while rendering on the server and during hydration, true afterwards.
+  // Cards become draggable only once the browser has taken over, so the first
+  // client render matches exactly what the server sent.
+  const mounted = useSyncExternalStore(
+    subscribeToNothing,
+    () => true,
+    () => false,
+  );
 
   const [optimistic, applyOptimistic] = useOptimistic(
     tasks,
@@ -253,6 +286,7 @@ export function KanbanBoard({
               label={s.label}
               tasks={optimistic.filter((t) => t.status === s.value)}
               canMove={canMove}
+              mounted={mounted}
             />
           ))}
         </div>

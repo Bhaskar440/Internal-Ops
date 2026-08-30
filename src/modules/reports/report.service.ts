@@ -2,7 +2,11 @@ import { prisma } from "@/lib/db/client";
 import { ventureIdScope } from "@/lib/permissions/scopes";
 import { isSuperAdmin, type Actor } from "@/lib/permissions/types";
 import { aggregateEfficiency, calculateEfficiency } from "@/lib/money/efficiency";
-import { toPrismaDate, type BusinessDate } from "@/lib/timezone/businessDate";
+import {
+  toPrismaDate,
+  countWorkingDays,
+  type BusinessDate,
+} from "@/lib/timezone/businessDate";
 
 /**
  * Reporting (§33).
@@ -192,6 +196,13 @@ export type PersonPerformanceRow = {
   daysRemote: number;
   daysLeave: number;
   daysAbsent: number;
+  /** Days actually worked — present plus remote. */
+  daysWorked: number;
+  /**
+   * Working days in the reported range, from the venture calendar. Null when
+   * no range was given, since "out of how many" has no meaning then.
+   */
+  workingDaysInPeriod: number | null;
   attendancePercent: number | null;
 };
 
@@ -270,7 +281,34 @@ export async function personPerformance(
     const remote = count("REMOTE");
     const leave = count("ON_LEAVE");
     const absent = count("ABSENT");
-    const totalDays = present + remote + leave + absent;
+    const daysWorked = present + remote;
+
+    // Working days come from the venture calendar, not from how many days the
+    // person happened to submit. Dividing by submissions would show 100% for
+    // someone who submitted five days out of twenty-one.
+    let workingDaysInPeriod: number | null = null;
+    if (filters.from && filters.to) {
+      const calendar = await prisma.venture.findFirst({
+        where: {
+          archivedAt: null,
+          ...(ventureIds ? { id: { in: ventureIds } } : {}),
+          memberships: { some: { personId: person.id, leftAt: null } },
+        },
+        select: { timezone: true, workingDays: true },
+      });
+      if (calendar) {
+        workingDaysInPeriod = countWorkingDays(
+          filters.from,
+          filters.to,
+          calendar.timezone,
+          calendar.workingDays,
+        );
+      }
+    }
+
+    // Percentage of the working days in the period, falling back to submitted
+    // days when no range was given.
+    const denominator = workingDaysInPeriod ?? present + remote + leave + absent;
 
     rows.push({
       personId: person.id,
@@ -284,7 +322,9 @@ export async function personPerformance(
       daysRemote: remote,
       daysLeave: leave,
       daysAbsent: absent,
-      attendancePercent: totalDays === 0 ? null : ((present + remote) / totalDays) * 100,
+      daysWorked,
+      workingDaysInPeriod,
+      attendancePercent: denominator === 0 ? null : (daysWorked / denominator) * 100,
     });
   }
 

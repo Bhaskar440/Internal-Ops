@@ -434,6 +434,58 @@ describe("approval queue ordering (§31)", () => {
   });
 });
 
+describe("completed tasks are final (business rule)", () => {
+  it("refuses to reopen a DONE task for a manager, but allows a Super Admin", async () => {
+    const manager = ventureActor(
+      baseActor({
+        userId: ids.mgrUser,
+        personId: ids.mgrPerson,
+        memberships: new Map([[ids.venture, "MANAGER"]]),
+      }),
+      "MANAGER",
+    );
+
+    const task = await createTask(manager, {
+      ventureId: ids.venture,
+      title: `Final ${S}`,
+      estimatedHours: 2,
+      priority: "LOW",
+      assigneeIds: [],
+    });
+
+    await changeTaskStatus(manager, { taskId: task.id, status: "IN_PROGRESS" });
+    await changeTaskStatus(manager, { taskId: task.id, status: "DONE" });
+
+    // A manager cannot undo completion — its hours have already fed reporting.
+    await expect(
+      changeTaskStatus(manager, { taskId: task.id, status: "IN_PROGRESS" }),
+    ).rejects.toSatisfy((e: unknown) => isAppError(e) && e.code === "FORBIDDEN");
+
+    // A Super Admin can, so a genuine mistake is still correctable.
+    const admin = ventureActor(
+      baseActor({
+        userId: ids.mgrUser,
+        personId: ids.mgrPerson,
+        globalRole: "SUPER_ADMIN",
+        memberships: new Map([[ids.venture, "MANAGER"]]),
+      }),
+      "MANAGER",
+    );
+    const reopened = await changeTaskStatus(admin, {
+      taskId: task.id,
+      status: "IN_PROGRESS",
+    });
+    expect(reopened.status).toBe("IN_PROGRESS");
+
+    // ...and the reopen is recorded distinctly in the audit trail.
+    const audit = await prisma.auditLog.findFirst({
+      where: { entityType: "Task", entityId: task.id, action: "TASK_STATUS_CHANGED" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(audit?.reason).toMatch(/reopened/i);
+  });
+});
+
 describe("business date attribution (§22)", () => {
   it("stores the venture-local date, not the UTC date", async () => {
     const actor = ventureActor(baseActor(), "MEMBER");
