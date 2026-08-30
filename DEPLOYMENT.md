@@ -9,6 +9,41 @@ Budget about an hour for a first deployment.
 
 ---
 
+## Docker now, hosted Postgres at handover
+
+A common question, worth settling before anything else.
+
+**The database is PostgreSQL in both cases.** Docker is not a database — it is
+just a way of running one on a laptop without installing it. Inside the
+container is ordinary PostgreSQL 16, the same software a managed provider runs.
+
+Nothing about the app is tied to Docker. It only ever reads one line:
+
+```
+DATABASE_URL="postgresql://user:password@host:port/database"
+```
+
+Locally that points at the container:
+
+```
+postgresql://portfolio_ops:portfolio_ops_dev@localhost:5440/portfolio_ops
+```
+
+For the client it points at their hosted database:
+
+```
+postgresql://user:pass@ep-something.ap-south-1.aws.neon.tech/portfolio_ops?sslmode=require
+```
+
+**That is the whole change.** No code edits, no rebuild, no migration of
+approach. `prisma migrate deploy` creates the same 23 tables there, and the
+client browses their own data in their provider's web console.
+
+Docker is a development convenience and disappears entirely at deployment. It
+is never part of what the client runs.
+
+---
+
 ## Before you start
 
 Have these ready:
