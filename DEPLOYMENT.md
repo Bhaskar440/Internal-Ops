@@ -9,38 +9,39 @@ Budget about an hour for a first deployment.
 
 ---
 
-## Docker now, hosted Postgres at handover
+## Local Postgres now, hosted Postgres at handover
 
 A common question, worth settling before anything else.
 
-**The database is PostgreSQL in both cases.** Docker is not a database — it is
-just a way of running one on a laptop without installing it. Inside the
-container is ordinary PostgreSQL 16, the same software a managed provider runs.
+**It is PostgreSQL in both cases.** Locally the app talks to the PostgreSQL 16
+server installed on this machine (port 5433). In production it talks to a
+managed PostgreSQL — the same software, run by someone else.
 
-Nothing about the app is tied to Docker. It only ever reads one line:
+Nothing about the app is tied to a particular host. It only ever reads one line:
 
 ```
 DATABASE_URL="postgresql://user:password@host:port/database"
 ```
 
-Locally that points at the container:
+Locally:
 
 ```
-postgresql://portfolio_ops:portfolio_ops_dev@localhost:5440/portfolio_ops
+postgresql://portfolio_ops:portfolio_ops_dev@localhost:5433/portfolio_ops
 ```
 
-For the client it points at their hosted database:
+For the client:
 
 ```
 postgresql://user:pass@ep-something.ap-south-1.aws.neon.tech/portfolio_ops?sslmode=require
 ```
 
-**That is the whole change.** No code edits, no rebuild, no migration of
-approach. `prisma migrate deploy` creates the same 23 tables there, and the
-client browses their own data in their provider's web console.
+**That is the whole change.** No code edits, no rebuild, no change of approach.
+`prisma migrate deploy` creates the same 23 tables there, and the client
+browses their own data in their provider's web console.
 
-Docker is a development convenience and disappears entirely at deployment. It
-is never part of what the client runs.
+> A `docker-compose.yml` remains in the repository as an alternative for anyone
+> who would rather not install PostgreSQL locally (`npm run docker:up`). It is a
+> convenience only — never part of what the client runs.
 
 ---
 

@@ -22,7 +22,7 @@ from the same row.
 ```bash
 npm install
 cp .env.example .env          # then set AUTH_SECRET (see below)
-npm run db:up                 # Postgres 16 on ports 5440 / 5441
+npm run db:setup              # create the role + databases on local Postgres 16
 npm run db:migrate            # apply migrations
 npm run db:seed               # first Super Admin + three ventures
 npm run dev                   # http://localhost:3000
@@ -40,7 +40,7 @@ Sign in with the seeded account and **change the password immediately**:
 admin@portfolioops.local / ChangeMe!2026
 ```
 
-> Ports are 5440/5441 rather than the usual 5432, because a Postgres install may
+> The app connects to your local PostgreSQL 16 on port 5433. Docker is not required;
 > already occupy the default range. Change them in `docker-compose.yml` and
 > `.env` together if you need to.
 

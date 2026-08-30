@@ -4,7 +4,7 @@ import { PrismaClient } from "@/generated/prisma/client";
 /**
  * Prisma client for integration tests.
  *
- * Always bound to TEST_DATABASE_URL (port 5441) so a test run can never touch
+ * Always bound to TEST_DATABASE_URL (a separate database) so a test run can never touch
  * development data (§66). tests/setup.ts also mirrors TEST_DATABASE_URL onto
  * DATABASE_URL, but this resolves it explicitly so the intent is local.
  */
