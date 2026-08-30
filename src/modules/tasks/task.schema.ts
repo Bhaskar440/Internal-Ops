@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalDateString } from "@/lib/validation/dateString";
 
 /** Validation for tasks (§15, §17, §53). */
 
@@ -40,12 +41,7 @@ export const createTaskSchema = z.object({
     .transform((v) => (v === "" ? undefined : v)),
   estimatedHours: estimatedHoursSchema,
   priority: taskPrioritySchema.default("MEDIUM"),
-  dueDate: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use the date picker.")
-    .optional()
-    .transform((v) => (v === "" ? undefined : v)),
+  dueDate: optionalDateString,
   assigneeIds: z.array(z.string().min(1)).default([]),
   /** §39: optional fixed fee for per-task freelancers. */
   fixedFee: z.number().positive().max(10_000_000).optional(),
@@ -63,11 +59,7 @@ export const updateTaskSchema = z.object({
   description: z.string().trim().max(5000).optional(),
   estimatedHours: estimatedHoursSchema.optional(),
   priority: taskPrioritySchema.optional(),
-  dueDate: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  dueDate: optionalDateString,
   assigneeIds: z.array(z.string().min(1)).optional(),
   fixedFee: z.number().positive().max(10_000_000).nullable().optional(),
   feeCurrency: z

@@ -15,6 +15,7 @@ import {
 } from "@/modules/payroll/payroll.service";
 import { setAgreement } from "@/modules/compensation/compensation.service";
 import { isAppError } from "@/lib/errors/appError";
+import { dateString } from "@/lib/validation/dateString";
 
 export type PayrollFormState = { error?: string };
 
@@ -90,12 +91,19 @@ export async function setCompensationAction(
       return { error: "Enter a rate greater than zero." };
     }
 
+    // effectiveFrom decides which rate a payroll run uses, so a malformed or
+    // absurd date here would misprice someone's pay.
+    const effectiveFrom = dateString.safeParse(formData.get("effectiveFrom"));
+    if (!effectiveFrom.success) {
+      return { error: effectiveFrom.error.issues[0]?.message ?? "Check the effective date." };
+    }
+
     await setAgreement(actor, {
       personId: String(formData.get("personId")),
       payType: String(formData.get("payType")) as "HOURLY" | "MONTHLY_FIXED" | "PER_TASK",
       currency: String(formData.get("currency")),
       rate,
-      effectiveFrom: String(formData.get("effectiveFrom")),
+      effectiveFrom: effectiveFrom.data,
       prorationPolicy: String(formData.get("prorationPolicy") ?? "FIXED_FULL") as
         | "FIXED_FULL"
         | "ATTENDANCE_PRORATED",

@@ -43,6 +43,8 @@ export default async function MyDayPage({
       durationMinutes: e.durationMinutes,
       note: e.note,
       running: e.running,
+      // ISO string so the browser can tick the elapsed time forward itself.
+      startedAt: e.startedAt.toISOString(),
       approvalStatus: e.approvalStatus,
     })),
     tasks: tasks

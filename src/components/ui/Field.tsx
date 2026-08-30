@@ -18,8 +18,21 @@ export function Label({ htmlFor, children }: { htmlFor?: string; children: React
   );
 }
 
+/**
+ * Widest range any date field in the product should accept.
+ *
+ * Without a bound, a native date input takes a six-digit year — typing into the
+ * year segment simply keeps going — and "year 202600" reaches the server as a
+ * valid date. Setting min/max makes the browser's own picker enforce the range
+ * before that happens; the Zod schemas still validate server-side.
+ */
+export const DATE_MIN = "2000-01-01";
+export const DATE_MAX = "2100-12-31";
+
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(CONTROL, className)} {...props} />;
+  const bounded =
+    props.type === "date" ? { min: DATE_MIN, max: DATE_MAX, ...props } : props;
+  return <input className={cn(CONTROL, className)} {...bounded} />;
 }
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {

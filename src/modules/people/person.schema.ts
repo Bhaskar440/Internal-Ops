@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalDateString } from "@/lib/validation/dateString";
 
 /** Validation for people and memberships (§53). */
 
@@ -17,12 +18,7 @@ export const createPersonSchema = z.object({
     .transform((v) => (v === "" ? undefined : v)),
   /** Employment type is orthogonal to access role (§5). */
   employmentType: employmentTypeSchema,
-  startDate: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Use the date picker.")
-    .optional()
-    .transform((v) => (v === "" ? undefined : v)),
+  startDate: optionalDateString,
   /** Optional initial venture assignments. */
   ventureIds: z.array(z.string().min(1)).default([]),
   accessRole: accessRoleSchema.default("MEMBER"),
@@ -38,16 +34,8 @@ export const updatePersonSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   phone: z.string().trim().max(30).optional(),
   employmentType: employmentTypeSchema.optional(),
-  startDate: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
-  endDate: z
-    .string()
-    .trim()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  startDate: optionalDateString,
+  endDate: optionalDateString,
 });
 
 export const setMembershipSchema = z.object({

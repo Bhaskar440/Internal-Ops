@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/client";
+import { prisma, type PrismaTransactionClient } from "@/lib/db/client";
 import { writeAudit } from "@/lib/audit/audit";
 import { conflict, forbidden, notFound } from "@/lib/errors/appError";
 import { ventureIdScope } from "@/lib/permissions/scopes";
@@ -457,9 +457,58 @@ export async function changeTaskStatus(actor: ActorWithVenture, input: ChangeSta
           : undefined,
     });
 
+    if (input.status === "DONE") {
+      await archiveOldestCompleted(tx, actor, before.ventureId);
+    }
+
     const actuals = await actualMinutesByTask([after.id]);
     return toView(after as TaskRow, actuals.get(after.id) ?? 0);
   });
+}
+
+/**
+ * Keep at most DONE_ON_BOARD completed tasks on the live board.
+ *
+ * A venture that finishes work steadily otherwise grows an unreadable Done
+ * column. Once a sixth task completes, the oldest is archived — it keeps every
+ * detail and its hours still count, it simply moves to the archive view where
+ * it can be restored or deleted.
+ *
+ * Runs in the caller's transaction so the board and the archive can never
+ * disagree, and each archive is audited with a reason making clear it was
+ * automatic rather than someone's decision.
+ */
+const DONE_ON_BOARD = 5;
+
+async function archiveOldestCompleted(
+  tx: PrismaTransactionClient,
+  actor: ActorWithVenture,
+  ventureId: string,
+) {
+  const done = await tx.task.findMany({
+    where: { ventureId, status: "DONE", archivedAt: null },
+    // Oldest completion first; completedAt is set whenever a task reaches DONE.
+    orderBy: [{ completedAt: "asc" }, { updatedAt: "asc" }],
+    select: { id: true, title: true, completedAt: true },
+  });
+
+  const excess = done.length - DONE_ON_BOARD;
+  if (excess <= 0) return;
+
+  for (const task of done.slice(0, excess)) {
+    await tx.task.update({
+      where: { id: task.id },
+      data: { archivedAt: new Date() },
+    });
+    await writeAudit(tx, {
+      actorUserId: actor.userId,
+      action: "TASK_ARCHIVED",
+      entityType: "Task",
+      entityId: task.id,
+      before: { title: task.title, status: "DONE" },
+      reason: `Archived automatically: more than ${DONE_ON_BOARD} completed tasks on the board`,
+    });
+  }
 }
 
 /** Archive a task (soft delete, §47). Time entries survive and still count. */
@@ -489,5 +538,91 @@ export async function getTaskHistory(actor: Actor, taskId: string) {
     where: { taskId },
     orderBy: { changedAt: "desc" },
     select: { id: true, fromStatus: true, toStatus: true, changedAt: true, changedBy: true },
+  });
+}
+
+/**
+ * Permanently delete an archived task.
+ *
+ * Unlike archiving this is irreversible, so it is deliberately narrow:
+ *
+ *   - the task must already be archived, making deletion a second, separate
+ *     decision rather than a single click from the board;
+ *   - a task with logged time cannot be deleted at all. Those hours belong to
+ *     approved days and possibly to a payroll run, and deleting the task would
+ *     leave that history pointing at nothing. The database enforces this too
+ *     (TimeEntry.task is onDelete: Restrict); the check here exists to explain
+ *     why rather than surface a constraint violation.
+ *
+ * Assignees and status history are removed with it by cascade.
+ */
+export async function deleteTask(actor: ActorWithVenture, taskId: string) {
+  if (!isSuperAdmin(actor) && actor.ventureRole !== "MANAGER") {
+    throw forbidden("Only a manager can delete a task.");
+  }
+
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, ventureId: true, title: true, status: true, archivedAt: true },
+  });
+  if (!task) throw notFound("Task");
+  if (task.ventureId !== actor.venture.id) throw notFound("Task");
+  if (!task.archivedAt) {
+    throw conflict("Archive this task before deleting it.");
+  }
+
+  const loggedEntries = await prisma.timeEntry.count({ where: { taskId } });
+  if (loggedEntries > 0) {
+    throw conflict(
+      `This task has ${loggedEntries} time ${
+        loggedEntries === 1 ? "entry" : "entries"
+      } recorded against it and cannot be deleted. It stays in the archive so those hours keep their history.`,
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // Audit BEFORE the delete: afterwards there is no row left to describe.
+    await writeAudit(tx, {
+      actorUserId: actor.userId,
+      action: "TASK_DELETED",
+      entityType: "Task",
+      entityId: taskId,
+      before: { title: task.title, status: task.status },
+      reason: "Permanently deleted from the archive",
+    });
+    await tx.task.delete({ where: { id: taskId } });
+  });
+}
+
+/**
+ * Bring an archived task back to the live board (§47).
+ *
+ * Necessary counterpart to automatic archiving: work that was tidied away by a
+ * counter rather than by a decision has to be recoverable.
+ */
+export async function restoreTask(actor: ActorWithVenture, taskId: string) {
+  if (!isSuperAdmin(actor) && actor.ventureRole !== "MANAGER") {
+    throw forbidden("Only a manager can restore a task.");
+  }
+
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { id: true, ventureId: true, title: true, status: true, archivedAt: true },
+  });
+  if (!task) throw notFound("Task");
+  if (task.ventureId !== actor.venture.id) throw notFound("Task");
+  if (!task.archivedAt) throw conflict("This task is not archived.");
+
+  return prisma.$transaction(async (tx) => {
+    await tx.task.update({ where: { id: taskId }, data: { archivedAt: null } });
+    await writeAudit(tx, {
+      actorUserId: actor.userId,
+      action: "TASK_UPDATED",
+      entityType: "Task",
+      entityId: taskId,
+      before: { archived: true },
+      after: { archived: false },
+      reason: "Restored from the archive",
+    });
   });
 }

@@ -6,6 +6,7 @@ import { isSuperAdmin } from "@/lib/permissions/types";
 import { PageHeader, EmptyState, Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { KanbanBoard, type BoardTask } from "@/components/kanban/KanbanBoard";
+import { ArchivedTaskList } from "@/components/tasks/ArchivedTaskList";
 import { fromPrismaDate } from "@/lib/timezone/businessDate";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,13 @@ export const metadata = { title: "Tasks" };
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ venture?: string; mine?: string; q?: string; archived?: string }>;
+  searchParams: Promise<{
+    venture?: string;
+    mine?: string;
+    q?: string;
+    archived?: string;
+    error?: string;
+  }>;
 }) {
   const params = await searchParams;
   const actor = await requireActiveActor();
@@ -175,13 +182,31 @@ export default async function TasksPage({
             </div>
           )}
 
-          {truncated && (
+          {showArchived ? (
+            <ArchivedTaskList
+              tasks={tasks.map((t) => ({
+                id: t.id,
+                ventureId: t.ventureId,
+                ventureName: t.ventureName,
+                ventureTagColor: t.ventureTagColor,
+                title: t.title,
+                status: t.status,
+                estimatedMinutes: t.estimatedMinutes,
+                actualMinutes: t.actualMinutes,
+                completedAt: t.completedAt ? fromPrismaDate(t.completedAt) : null,
+              }))}
+              canManage={canManage}
+              error={params.error}
+            />
+          ) : null}
+
+          {!showArchived && truncated && (
             <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
               Showing the first {BOARD_TASK_LIMIT} of {totalMatching} tasks. Filter by
               venture or search to narrow the board.
             </div>
           )}
-          <KanbanBoard tasks={board} canMove={canManage} />
+          {!showArchived && <KanbanBoard tasks={board} canMove={canManage} />}
         </>
       )}
     </>

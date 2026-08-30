@@ -6,6 +6,8 @@ import { requireVenture } from "@/lib/permissions/guard";
 import { createTaskSchema, changeStatusSchema, updateTaskSchema } from "@/modules/tasks/task.schema";
 import {
   archiveTask,
+  deleteTask,
+  restoreTask,
   changeTaskStatus,
   createTask,
   updateTask,
@@ -160,4 +162,45 @@ export async function archiveTaskAction(formData: FormData): Promise<void> {
 
   revalidatePath("/tasks");
   redirect("/tasks");
+}
+
+/** Bring an archived task back to the board. */
+export async function restoreTaskAction(formData: FormData): Promise<void> {
+  const taskId = String(formData.get("taskId"));
+  const ventureId = String(formData.get("ventureId"));
+
+  const actor = await requireVenture(ventureId, "task:archive");
+  await restoreTask(actor, taskId);
+
+  revalidatePath("/tasks");
+  redirect("/tasks?archived=1");
+}
+
+/**
+ * Permanently delete an archived task.
+ *
+ * Refused when the task has logged time; the message explains why rather than
+ * letting a database constraint surface as a 500.
+ */
+export async function deleteTaskAction(formData: FormData): Promise<void> {
+  const taskId = String(formData.get("taskId"));
+  const ventureId = String(formData.get("ventureId"));
+
+  const actor = await requireVenture(ventureId, "task:archive");
+
+  // redirect() signals by throwing, so it must sit outside the try — calling it
+  // inside would have this catch swallow the navigation.
+  let failure: string | null = null;
+  try {
+    await deleteTask(actor, taskId);
+  } catch (e) {
+    failure = isAppError(e) ? e.message : "Could not delete that task.";
+  }
+
+  revalidatePath("/tasks");
+  redirect(
+    failure
+      ? `/tasks?archived=1&error=${encodeURIComponent(failure)}`
+      : "/tasks?archived=1",
+  );
 }

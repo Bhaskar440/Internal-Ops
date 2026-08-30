@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Card";
+import { LiveElapsed } from "@/components/ui/LiveElapsed";
 import { formatMinutes } from "@/lib/money/efficiency";
 import {
   startTimerAction,
@@ -21,6 +22,8 @@ export type DayEntry = {
   durationMinutes: number;
   note: string | null;
   running: boolean;
+  /** ISO timestamp; used to tick a running timer in the browser. */
+  startedAt: string;
   approvalStatus: string;
 };
 
@@ -189,7 +192,14 @@ export function DayVentureSection({
                   {e.approvalStatus === "NEEDS_REVIEW" && <Badge tone="amber">needs review</Badge>}
 
                   <span className="tabular-nums text-zinc-700 dark:text-zinc-300">
-                    {e.running ? "running…" : formatMinutes(e.durationMinutes)}
+                    {e.running ? (
+                      <LiveElapsed
+                        startedAt={e.startedAt}
+                        className="font-medium text-green-700 dark:text-green-400"
+                      />
+                    ) : (
+                      formatMinutes(e.durationMinutes)
+                    )}
                   </span>
 
                   {!locked && !e.running && e.source !== "TIMER" && (
