@@ -98,10 +98,29 @@ async function main() {
 
   const admin = await prisma.user.findFirst({
     where: { globalRole: "SUPER_ADMIN" },
-    select: { id: true },
+    select: { id: true, email: true, passwordHash: true, accountStatus: true },
   });
   if (!admin) {
     throw new Error("No Super Admin found. Run `npm run db:seed` first.");
+  }
+
+  // The real seed leaves this account PENDING with no password so its owner can
+  // set their own from an invitation link. That is right for a handover and
+  // useless for evaluation, where there has to be an admin to log in as. Give
+  // it the demo password — safe here because this script already refuses to run
+  // against anything but a local database.
+  if (admin.passwordHash === null) {
+    await prisma.user.update({
+      where: { id: admin.id },
+      data: {
+        passwordHash: await bcrypt.hash(DEMO_PASSWORD, 12),
+        accountStatus: "ACTIVE",
+        emailVerified: new Date(),
+      },
+    });
+    // Any outstanding invitation is void now that a password exists.
+    await prisma.verificationToken.deleteMany({ where: { identifier: admin.email } });
+    console.log(`  Super Admin activated for demo: ${admin.email} / ${DEMO_PASSWORD}`);
   }
 
   const ventures = await prisma.venture.findMany({
