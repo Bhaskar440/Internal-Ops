@@ -23,11 +23,32 @@ const DEMO_PASSWORD = "DemoPassword123";
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error("DATABASE_URL is not set.");
 
-// Demo data must never touch a real deployment.
-if (!/localhost|127\.0\.0\.1/.test(connectionString)) {
+/**
+ * Demo data must never touch a real deployment: it invents people and a payroll
+ * run with fabricated amounts, which is the last thing that should appear
+ * alongside real records.
+ *
+ * A local database is allowed outright. Anything hosted requires
+ * ALLOW_REMOTE_DEMO=1, which nobody types by accident — the point is that a
+ * copied command cannot quietly populate a live system.
+ */
+const isLocal = /localhost|127\.0\.0\.1/.test(connectionString);
+if (!isLocal && process.env.ALLOW_REMOTE_DEMO !== "1") {
   throw new Error(
-    "Refusing to seed demo data into a non-local database. This script is for evaluation only.",
+    [
+      "Refusing to seed demo data into a database that is not on this machine.",
+      "",
+      "This script creates fictional people and a payroll run with invented",
+      "amounts. On a live system that would sit alongside real records.",
+      "",
+      "If this is your own test database, say so explicitly:",
+      "  PowerShell:  $env:ALLOW_REMOTE_DEMO = '1'; npm run db:demo",
+      "  Bash:        ALLOW_REMOTE_DEMO=1 npm run db:demo",
+    ].join("\n"),
   );
+}
+if (!isLocal) {
+  console.log("  ALLOW_REMOTE_DEMO is set - writing demo data to a hosted database.\n");
 }
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) });
