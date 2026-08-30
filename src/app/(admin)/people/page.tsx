@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireActiveActor } from "@/lib/auth/actor";
 import { listPeoplePaged } from "@/modules/people/person.service";
+import { hoursReport } from "@/modules/reports/report.service";
+import { formatMinutes } from "@/lib/money/efficiency";
 import { listVentures } from "@/modules/ventures/venture.service";
 import { isSuperAdmin } from "@/lib/permissions/types";
 import { Card, PageHeader, EmptyState, Badge } from "@/components/ui/Card";
@@ -28,14 +30,27 @@ export default async function PeoplePage({
 
   const currentPage = params.page ? Math.max(1, Number(params.page)) : 1;
 
-  const [result, ventures] = await Promise.all([
+  const [result, ventures, hours] = await Promise.all([
     listPeoplePaged(actor, {
       search: params.q,
       ventureId: params.venture,
       page: currentPage,
     }),
     listVentures(actor),
+    // Logged and approved hours, so the directory answers "who is this and what
+    // have they done" in one place rather than sending you to Reports.
+    hoursReport(actor, { ventureId: params.venture }),
   ]);
+
+  // hoursReport returns a row per person PER VENTURE; the directory lists a
+  // person once, so fold them together.
+  const workByPerson = new Map<string, { minutes: number; approvedMinutes: number }>();
+  for (const row of hours) {
+    const acc = workByPerson.get(row.personId) ?? { minutes: 0, approvedMinutes: 0 };
+    acc.minutes += row.minutes;
+    acc.approvedMinutes += row.approvedMinutes;
+    workByPerson.set(row.personId, acc);
+  }
 
   const filtered = params.status
     ? result.people.filter((p) => p.accountStatus === params.status)
@@ -170,6 +185,8 @@ export default async function PeoplePage({
                 <th className="pb-2 pr-4 font-medium">Name</th>
                 <th className="pb-2 pr-4 font-medium">Type</th>
                 <th className="pb-2 pr-4 font-medium">Ventures</th>
+                <th className="pb-2 pr-4 text-right font-medium">Logged</th>
+                <th className="pb-2 pr-4 text-right font-medium">Approved</th>
                 <th className="pb-2 pr-4 font-medium">Status</th>
                 {admin && <th className="pb-2 font-medium">Actions</th>}
               </tr>
@@ -214,6 +231,16 @@ export default async function PeoplePage({
                         ))
                       )}
                     </div>
+                  </td>
+                  <td className="py-3 pr-4 text-right tabular-nums text-zinc-600 dark:text-zinc-400">
+                    {workByPerson.get(p.personId)?.minutes
+                      ? formatMinutes(workByPerson.get(p.personId)!.minutes)
+                      : "—"}
+                  </td>
+                  <td className="py-3 pr-4 text-right tabular-nums text-zinc-900 dark:text-zinc-100">
+                    {workByPerson.get(p.personId)?.approvedMinutes
+                      ? formatMinutes(workByPerson.get(p.personId)!.approvedMinutes)
+                      : "—"}
                   </td>
                   <td className="py-3 pr-4">
                     <Badge

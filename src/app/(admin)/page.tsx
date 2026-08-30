@@ -363,6 +363,9 @@ function AttendanceRow({
   total: number;
   tone: string;
 }) {
+  // Drives the bar width only. The figure beside it is a count out of the
+  // total, not a percentage: "3 of 5 people" is what a manager needs, and the
+  // bar already carries the proportion.
   const pct = total === 0 ? 0 : (count / total) * 100;
   return (
     <li className="flex items-center gap-3 text-sm">
@@ -375,9 +378,7 @@ function AttendanceRow({
       </span>
       <span className="w-16 shrink-0 text-right tabular-nums text-zinc-900 dark:text-zinc-100">
         {count}
-        <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">
-          {pct.toFixed(0)}%
-        </span>
+        <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">/ {total}</span>
       </span>
     </li>
   );

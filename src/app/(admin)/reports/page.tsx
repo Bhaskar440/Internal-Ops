@@ -304,15 +304,16 @@ async function PeopleTable({ actor, filters }: Props) {
                   <span title="Days worked out of working days in this period">
                     {r.daysWorked} / {r.workingDaysInPeriod}
                     <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">
-                      {r.attendancePercent === null
-                        ? ""
-                        : `${r.attendancePercent.toFixed(0)}%`}
+                      days
                     </span>
                   </span>
-                ) : r.attendancePercent === null ? (
-                  "—"
                 ) : (
-                  `${r.attendancePercent.toFixed(0)}%`
+                  <span title="Days worked in this period">
+                    {r.daysWorked}
+                    <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">
+                      days
+                    </span>
+                  </span>
                 )}
               </td>
             </tr>
@@ -424,15 +425,16 @@ async function AttendanceTable({ actor, filters }: Props) {
                   <span title="Days worked out of working days in this period">
                     {r.daysWorked} / {r.workingDaysInPeriod}
                     <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">
-                      {r.attendancePercent === null
-                        ? ""
-                        : `${r.attendancePercent.toFixed(0)}%`}
+                      days
                     </span>
                   </span>
-                ) : r.attendancePercent === null ? (
-                  "—"
                 ) : (
-                  `${r.attendancePercent.toFixed(0)}%`
+                  <span title="Days worked in this period">
+                    {r.daysWorked}
+                    <span className="ml-1 text-xs text-zinc-400 dark:text-zinc-600">
+                      days
+                    </span>
+                  </span>
                 )}
               </td>
             </tr>

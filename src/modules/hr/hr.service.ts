@@ -108,10 +108,30 @@ export async function createAsset(
   });
 }
 
+/**
+ * Turn a `YYYY-MM-DD` from a form into a timestamp.
+ *
+ * These record when something actually happened — a laptop handed over, a
+ * document checked — which is frequently not the day someone gets round to
+ * entering it. Defaulting silently to now() quietly falsified the record, so
+ * the caller supplies the date and today is used only when none is given.
+ *
+ * Midday UTC, not midnight: a date-only value stored at midnight can read as
+ * the previous day once rendered in a timezone behind UTC.
+ */
+function parseRecordedDate(value?: string): Date {
+  if (!value) return new Date();
+  const parsed = new Date(`${value}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    throw conflict("That date could not be read. Use the date picker.");
+  }
+  return parsed;
+}
+
 /** Issue an asset to a person (§13). Refuses if it is already out. */
 export async function issueAsset(
   actor: Actor,
-  input: { assetId: string; personId: string; condition?: string },
+  input: { assetId: string; personId: string; condition?: string; issuedAt?: string },
 ) {
   assertHrAccess(actor);
 
@@ -137,7 +157,7 @@ export async function issueAsset(
       data: {
         assetId: input.assetId,
         personId: input.personId,
-        issuedAt: new Date(),
+        issuedAt: parseRecordedDate(input.issuedAt),
         issuedBy: actor.userId,
         issueCondition: input.condition,
       },
@@ -161,7 +181,7 @@ export async function issueAsset(
 /** Record a return, freeing the asset for the next person. */
 export async function returnAsset(
   actor: Actor,
-  input: { assetId: string; condition?: string },
+  input: { assetId: string; condition?: string; returnedAt?: string },
 ) {
   assertHrAccess(actor);
 
@@ -175,7 +195,7 @@ export async function returnAsset(
     await tx.assetAssignment.update({
       where: { id: open.id },
       data: {
-        returnedAt: new Date(),
+        returnedAt: parseRecordedDate(input.returnedAt),
         returnedTo: actor.userId,
         returnCondition: input.condition,
       },
@@ -312,6 +332,8 @@ export async function saveDocument(
     expiryDate?: BusinessDate;
     externalLink?: string;
     notes?: string;
+    /** When verification actually happened, if not today. */
+    verifiedAt?: string;
   },
 ) {
   assertHrAccess(actor);
@@ -323,7 +345,7 @@ export async function saveDocument(
     externalReferenceLink: input.externalLink,
     notes: input.notes,
     ...(input.status === "VERIFIED"
-      ? { verifiedBy: actor.userId, verifiedAt: new Date() }
+      ? { verifiedBy: actor.userId, verifiedAt: parseRecordedDate(input.verifiedAt) }
       : {}),
   };
 

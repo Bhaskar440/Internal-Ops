@@ -9,6 +9,7 @@ import {
   saveDocument,
 } from "@/modules/hr/hr.service";
 import { isAppError } from "@/lib/errors/appError";
+import { dateString } from "@/lib/validation/dateString";
 
 export type HrFormState = { error?: string };
 
@@ -41,6 +42,7 @@ export async function issueAssetAction(formData: FormData): Promise<void> {
     assetId: String(formData.get("assetId")),
     personId: String(formData.get("personId")),
     condition: String(formData.get("condition") ?? "") || undefined,
+    issuedAt: dateOrUndefined(formData.get("issuedAt")),
   });
   revalidatePath("/hr");
 }
@@ -50,6 +52,7 @@ export async function returnAssetAction(formData: FormData): Promise<void> {
   await returnAsset(actor, {
     assetId: String(formData.get("assetId")),
     condition: String(formData.get("condition") ?? "") || undefined,
+    returnedAt: dateOrUndefined(formData.get("returnedAt")),
   });
   revalidatePath("/hr");
 }
@@ -71,6 +74,7 @@ export async function saveDocumentAction(
       expiryDate: String(formData.get("expiryDate") ?? "") || undefined,
       externalLink: String(formData.get("externalLink") ?? "").trim() || undefined,
       notes: String(formData.get("notes") ?? "").trim() || undefined,
+      verifiedAt: dateOrUndefined(formData.get("verifiedAt")),
     });
 
     revalidatePath("/hr");
@@ -78,4 +82,16 @@ export async function saveDocumentAction(
   } catch (e) {
     return { error: isAppError(e) ? e.message : "Could not save the document record." };
   }
+}
+
+/**
+ * A date field the admin left blank means "today", not an invalid value.
+ * Anything present is validated, so a typed-in year cannot slip through.
+ */
+function dateOrUndefined(raw: FormDataEntryValue | null): string | undefined {
+  const value = String(raw ?? "").trim();
+  if (!value) return undefined;
+  const parsed = dateString.safeParse(value);
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid date.");
+  return parsed.data;
 }

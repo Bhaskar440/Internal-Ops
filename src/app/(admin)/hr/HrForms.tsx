@@ -97,6 +97,13 @@ export function DocumentForm({
           <Label htmlFor="expiryDate">Expiry date</Label>
           <Input id="expiryDate" name="expiryDate" type="date" />
         </div>
+        <div>
+          <Label htmlFor="verifiedAt">Date verified</Label>
+          <Input id="verifiedAt" name="verifiedAt" type="date" />
+          <Hint>
+            When the check actually happened. Leave blank to record it as today.
+          </Hint>
+        </div>
       </div>
 
       <div>

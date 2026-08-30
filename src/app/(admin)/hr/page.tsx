@@ -4,6 +4,7 @@ import { listAssets, listDocuments } from "@/modules/hr/hr.service";
 import { listPeople } from "@/modules/people/person.service";
 import { PageHeader, Card, EmptyState, Badge } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { DATE_MIN, DATE_MAX } from "@/components/ui/Field";
 import { AssetForm, DocumentForm } from "./HrForms";
 import { issueAssetAction, returnAssetAction } from "./actions";
 
@@ -114,6 +115,15 @@ export default async function HrPage() {
                             placeholder="Condition"
                             className="w-28 rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
                           />
+                          <input
+                            type="date"
+                            name="returnedAt"
+                            aria-label="Date returned"
+                            title="Date returned - leave blank for today"
+                            min={DATE_MIN}
+                            max={DATE_MAX}
+                            className="w-36 rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                          />
                           <Button variant="secondary" type="submit" className="px-2 py-1 text-xs">
                             Record return
                           </Button>
@@ -133,6 +143,21 @@ export default async function HrPage() {
                             </option>
                           ))}
                         </select>
+                        <input
+                          type="date"
+                          name="issuedAt"
+                          aria-label="Date issued"
+                          title="Date issued - leave blank for today"
+                          min={DATE_MIN}
+                          max={DATE_MAX}
+                          className="w-36 rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                        />
+                        <input
+                          name="condition"
+                          aria-label="Condition when issued"
+                          placeholder="Condition"
+                          className="w-28 rounded-md border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                        />
                         <Button type="submit" className="px-2 py-1 text-xs">
                           Issue
                         </Button>

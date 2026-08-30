@@ -333,9 +333,7 @@ async function WorkTab({
                 value={
                   stats.workingDaysInPeriod !== null
                     ? `${stats.daysWorked} / ${stats.workingDaysInPeriod} days`
-                    : stats.attendancePercent === null
-                      ? "—"
-                      : `${stats.attendancePercent.toFixed(0)}%`
+                    : `${stats.daysWorked} days`
                 }
                 plain
               />

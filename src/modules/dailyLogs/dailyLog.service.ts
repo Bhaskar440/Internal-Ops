@@ -1,4 +1,5 @@
-import { prisma } from "@/lib/db/client";
+import { prisma, type PrismaTransactionClient } from "@/lib/db/client";
+import { formatMinutes } from "@/lib/money/efficiency";
 import { writeAudit } from "@/lib/audit/audit";
 import { AppError, conflict, forbidden, notFound } from "@/lib/errors/appError";
 import { ventureIdScope } from "@/lib/permissions/scopes";
@@ -17,7 +18,7 @@ import {
   listEntriesForLogs,
   type TimeEntryView,
 } from "@/modules/time/time.service";
-import { notify } from "@/modules/notifications/notification.service";
+import { notify, notifyMany } from "@/modules/notifications/notification.service";
 
 /**
  * Daily logs / timesheets (§26-§32).
@@ -258,6 +259,33 @@ export async function updateLog(
 }
 
 /** Submit a day for review (§28). */
+/**
+ * Who should hear that a day was submitted: the venture's managers, plus every
+ * Super Admin, since they approve anywhere.
+ *
+ * The submitter is excluded — a manager logging their own day does not need to
+ * be told they did it.
+ */
+async function approverPersonIds(
+  tx: PrismaTransactionClient,
+  ventureId: string,
+  submitterPersonId: string,
+): Promise<string[]> {
+  const managers = await tx.ventureMembership.findMany({
+    where: { ventureId, accessRole: "MANAGER", leftAt: null },
+    select: { personId: true },
+  });
+
+  const admins = await tx.person.findMany({
+    where: { user: { globalRole: "SUPER_ADMIN", accountStatus: "ACTIVE" } },
+    select: { id: true },
+  });
+
+  const ids = new Set([...managers.map((m) => m.personId), ...admins.map((a) => a.id)]);
+  ids.delete(submitterPersonId);
+  return [...ids];
+}
+
 export async function submitLog(actor: Actor, logId: string): Promise<DailyLogView> {
   const view = await getLog(actor, logId);
   if (view.personId !== actor.personId) throw forbidden("You can only submit your own log.");
@@ -289,6 +317,25 @@ export async function submitLog(actor: Actor, logId: string): Promise<DailyLogVi
       entityId: logId,
       after: { totalMinutes: view.totalMinutes, attendance: view.attendanceStatus },
     });
+
+    // Tell the people who can approve it. Without this a submitted day sits in
+    // the queue with nothing to draw anyone to it, which is how work waits days
+    // for an approval nobody knew was pending.
+    await notifyMany(
+      await approverPersonIds(tx, view.ventureId, view.personId),
+      (personId) => ({
+        personId,
+        kind: "DAILY_LOG_SUBMITTED" as const,
+        title: `${view.personName} submitted ${view.businessDate}`,
+        body: `${formatMinutes(view.totalMinutes)} logged in ${view.ventureName}.`,
+        link: "/approvals",
+        // One alert per submitted day: re-submitting after a rejection
+        // refreshes it rather than stacking a second.
+        dedupeKey: `dailylog:${logId}:submitted`,
+      }),
+      tx,
+    );
+
     return after;
   });
 
@@ -321,6 +368,20 @@ export async function approveLog(actor: ActorWithVenture, logId: string): Promis
       where: { dailyLogId: logId, approvalStatus: { not: "NEEDS_REVIEW" } },
       data: { approvalStatus: "APPROVED" },
     });
+
+    // Close the loop: rejection already told the employee, so approval should
+    // too. Otherwise the only feedback anyone receives is bad news.
+    await notify(
+      {
+        personId: view.personId,
+        kind: "DAILY_LOG_APPROVED",
+        title: `Your ${view.businessDate} log was approved`,
+        body: `${formatMinutes(view.totalMinutes)} approved in ${view.ventureName}.`,
+        link: `/my-day?date=${view.businessDate}`,
+        dedupeKey: `dailylog:${logId}:approved`,
+      },
+      tx,
+    );
     await writeAudit(tx, {
       actorUserId: actor.userId,
       action: "DAILY_LOG_APPROVED",

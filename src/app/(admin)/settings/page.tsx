@@ -6,7 +6,8 @@ import { isEmailConfigured } from "@/lib/email/mailer";
 import { isMyPayEnabled } from "@/modules/compensation/compensation.service";
 import { Card, PageHeader, Badge, EmptyState } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { WEEKDAYS } from "@/modules/ventures/venture.schema";
+import { VentureSettingsRow } from "@/components/forms/VentureSettingsRow";
+import { prisma } from "@/lib/db/client";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings" };
@@ -25,6 +26,16 @@ export default async function SettingsPage() {
   const actor = access.actor;
 
   const ventures = await listVentures(actor);
+
+  // updateVenture refuses a timezone change once time exists, because it would
+  // reinterpret every historical business date. Ask up front so the field is
+  // disabled with a reason instead of failing on save.
+  const withTime = await prisma.timeEntry.groupBy({
+    by: ["ventureId"],
+    where: { ventureId: { in: ventures.map((v) => v.id) } },
+    _count: { _all: true },
+  });
+  const lockedTimezones = new Set(withTime.map((r) => r.ventureId));
 
   const systemSettings = [
     {
@@ -108,40 +119,20 @@ export default async function SettingsPage() {
             </thead>
             <tbody>
               {ventures.map((v) => (
-                <tr key={v.id} className="border-b border-zinc-200 dark:border-zinc-800">
-                  <td className="py-2.5 pr-4">
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: v.tagColor }}
-                        aria-hidden
-                      />
-                      <span className="text-zinc-900 dark:text-zinc-100">{v.name}</span>
-                    </span>
-                  </td>
-                  <td className="py-2.5 pr-4 text-zinc-600 dark:text-zinc-400">
-                    {v.timezone}
-                  </td>
-                  <td className="py-2.5 pr-4 text-zinc-600 dark:text-zinc-400">
-                    {v.workingDays
-                      .map((d) => WEEKDAYS.find((w) => w.value === d)?.label)
-                      .join(" ")}
-                  </td>
-                  <td className="py-2.5 pr-4 tabular-nums text-zinc-600 dark:text-zinc-400">
-                    {v.dailyLogEditWindowHours}h
-                  </td>
-                  <td className="py-2.5 pr-4 text-zinc-600 dark:text-zinc-400">
-                    {v.defaultCurrency}
-                  </td>
-                  <td className="py-2.5 text-right">
-                    <Link
-                      href={`/ventures/${v.slug}`}
-                      className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
+                <VentureSettingsRow
+                  key={v.id}
+                  venture={{
+                    id: v.id,
+                    slug: v.slug,
+                    name: v.name,
+                    tagColor: v.tagColor,
+                    timezone: v.timezone,
+                    workingDays: v.workingDays,
+                    dailyLogEditWindowHours: v.dailyLogEditWindowHours,
+                    defaultCurrency: v.defaultCurrency,
+                    timezoneLocked: lockedTimezones.has(v.id),
+                  }}
+                />
               ))}
             </tbody>
           </table>
