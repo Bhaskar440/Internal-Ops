@@ -26,6 +26,11 @@ export const createPersonSchema = z.object({
   /** Optional initial venture assignments. */
   ventureIds: z.array(z.string().min(1)).default([]),
   accessRole: accessRoleSchema.default("MEMBER"),
+  /**
+   * Invite this person straight to Super Admin. Only an existing Super Admin
+   * may set it, enforced in the service — a form field is not a permission.
+   */
+  makeSuperAdmin: z.coerce.boolean().default(false),
 });
 
 export const updatePersonSchema = z.object({
@@ -77,3 +82,9 @@ export const ACCESS_ROLES = [
   { value: "MEMBER", label: "Member" },
   { value: "MANAGER", label: "Manager" },
 ] as const;
+
+export const setGlobalRoleSchema = z.object({
+  userId: z.string().min(1),
+  globalRole: z.enum(["SUPER_ADMIN", "USER"]),
+  reason: z.string().trim().max(500).optional(),
+});

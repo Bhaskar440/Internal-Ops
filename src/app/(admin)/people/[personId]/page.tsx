@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { Tabs } from "@/components/layout/Tabs";
 import { setMembershipAction, removeMembershipAction } from "../actions";
 import { CompensationPanel } from "@/components/forms/CompensationPanel";
+import { GlobalRolePanel } from "@/components/forms/GlobalRolePanel";
 import { ACCESS_ROLES } from "@/modules/people/person.schema";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +65,18 @@ export default async function PersonDetailPage({
 
   const admin = isSuperAdmin(actor);
   const allVentures = await listVentures(actor);
+
+  // Drives whether the demote control is offered: the service refuses to remove
+  // the last active Super Admin, so the UI should not pretend otherwise.
+  const otherActiveSuperAdmins = admin
+    ? await prisma.user.count({
+        where: {
+          globalRole: "SUPER_ADMIN",
+          accountStatus: "ACTIVE",
+          id: { not: person.userId },
+        },
+      })
+    : 0;
 
   // HR and pay data are loaded only when the caller is allowed to see them.
   const [agreements, assets, documents] = admin
@@ -135,6 +148,17 @@ export default async function PersonDetailPage({
                   </Row>
                 )}
               </dl>
+
+              {admin && (
+                <GlobalRolePanel
+                  userId={person.userId}
+                  personId={person.personId}
+                  personName={person.name}
+                  isSuper={person.globalRole === "SUPER_ADMIN"}
+                  isSelf={person.userId === actor.userId}
+                  canDemote={otherActiveSuperAdmins > 0}
+                />
+              )}
 
               {!admin && (
                 <p className="mt-6 border-t border-zinc-200 pt-4 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">

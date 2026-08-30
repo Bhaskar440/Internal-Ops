@@ -28,6 +28,8 @@ export const GLOBAL_PERMISSIONS = {
   "person:activate": (a: Actor) => isSuperAdmin(a),
   "person:deactivate": (a: Actor) => isSuperAdmin(a),
   "person:approve-registration": (a: Actor) => isSuperAdmin(a),
+  // Super Admins are equal: any of them may grant or revoke the role.
+  "person:set-global-role": (a: Actor) => isSuperAdmin(a),
 
   /** Compensation is Super Admin only — managers get no salary access (§6, §52). */
   "compensation:read": (a: Actor) => isSuperAdmin(a),

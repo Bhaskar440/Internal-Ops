@@ -6,12 +6,14 @@ import { requireGlobal, requireVenture } from "@/lib/permissions/guard";
 import {
   createPersonSchema,
   setAccountStatusSchema,
+  setGlobalRoleSchema,
   setMembershipSchema,
 } from "@/modules/people/person.schema";
 import {
   createPerson,
   removeMembership,
   setAccountStatus,
+  setGlobalRole,
   setMembership,
 } from "@/modules/people/person.service";
 import { isAppError } from "@/lib/errors/appError";
@@ -44,6 +46,8 @@ export async function createPersonAction(
       startDate: formData.get("startDate") ?? undefined,
       ventureIds: formData.getAll("ventureIds").map(String).filter(Boolean),
       accessRole: formData.get("accessRole") ?? "MEMBER",
+      // An unchecked checkbox is absent from FormData entirely.
+      makeSuperAdmin: formData.get("makeSuperAdmin") === "on",
     });
 
     if (!parsed.success) {
@@ -128,6 +132,29 @@ export async function setAccountStatusAction(formData: FormData): Promise<void> 
   await setAccountStatus(actor, parsed.data);
 
   revalidatePath("/people");
+  revalidatePath("/");
+}
+
+/**
+ * Grant or revoke Super Admin (§7).
+ *
+ * Deliberately a separate action from account status: changing someone's role
+ * is not the same decision as switching them on or off, and conflating them
+ * would let one confirmation carry both.
+ */
+export async function setGlobalRoleAction(formData: FormData): Promise<void> {
+  const parsed = setGlobalRoleSchema.safeParse({
+    userId: formData.get("userId"),
+    globalRole: formData.get("globalRole"),
+    reason: formData.get("reason") ?? undefined,
+  });
+  if (!parsed.success) return;
+
+  const actor = await requireGlobal("person:set-global-role");
+  await setGlobalRole(actor, parsed.data);
+
+  revalidatePath("/people");
+  revalidatePath(`/people/${String(formData.get("personId") ?? "")}`);
   revalidatePath("/");
 }
 

@@ -284,11 +284,19 @@ export async function getPerson(actor: Actor, personId: string): Promise<PersonS
  */
 export async function createPerson(
   actor: Actor,
-  input: Omit<CreatePersonInput, "phone" | "startDate"> & {
+  input: Omit<CreatePersonInput, "phone" | "startDate" | "makeSuperAdmin"> & {
     phone?: string;
     startDate?: string;
+    makeSuperAdmin?: boolean;
   },
 ) {
+  // Inviting straight to Super Admin hands full system control to whoever
+  // controls that inbox, so only an existing Super Admin may do it.
+  const asSuperAdmin = input.makeSuperAdmin === true;
+  if (asSuperAdmin && !isSuperAdmin(actor)) {
+    throw forbidden("Only a Super Admin can invite another Super Admin.");
+  }
+
   const existing = await prisma.user.findUnique({
     where: { email: input.email },
     select: { id: true },
@@ -309,7 +317,7 @@ export async function createPerson(
         name: input.name,
         email: input.email,
         phone: input.phone,
-        globalRole: "USER",
+        globalRole: asSuperAdmin ? "SUPER_ADMIN" : "USER",
         accountStatus: "PENDING",
         person: {
           create: {
@@ -537,5 +545,82 @@ export async function updatePerson(actor: Actor, input: UpdatePersonInput) {
     });
 
     return toSummary(after as PersonRow);
+  });
+}
+
+/**
+ * Grant or revoke Super Admin (§7).
+ *
+ * Super Admins are equal by policy: anyone holding the role can promote and
+ * demote anyone else, including whoever promoted them. That is a deliberate
+ * choice, not an oversight — it means promotion is irreversible in practice,
+ * so every change here is audited with the actor who made it.
+ *
+ * Two invariants survive regardless:
+ *   - the system can never be left without an active Super Admin;
+ *   - passwords are never touched here. An admin cannot set another person's
+ *     password, only their role. Credentials stay with their owner (§7).
+ */
+export async function setGlobalRole(
+  actor: Actor,
+  input: { userId: string; globalRole: "SUPER_ADMIN" | "USER"; reason?: string },
+) {
+  if (!isSuperAdmin(actor)) throw forbidden();
+
+  const before = await prisma.user.findUnique({
+    where: { id: input.userId },
+    select: { id: true, name: true, email: true, globalRole: true, accountStatus: true },
+  });
+  if (!before) throw notFound("User");
+  if (before.globalRole === input.globalRole) return before;
+
+  // Promoting a PENDING or SUSPENDED account would grant full control to
+  // someone who cannot yet sign in — and, for PENDING, to an email address
+  // nobody has proven they own.
+  if (input.globalRole === "SUPER_ADMIN" && before.accountStatus !== "ACTIVE") {
+    throw conflict(
+      "Only an active account can be made a Super Admin. Approve or reactivate the account first.",
+    );
+  }
+
+  if (input.globalRole === "USER") {
+    // Demotion is the other way the last admin can disappear; setAccountStatus
+    // guards deactivation, this guards the role itself.
+    const others = await prisma.user.count({
+      where: {
+        globalRole: "SUPER_ADMIN",
+        accountStatus: "ACTIVE",
+        id: { not: input.userId },
+      },
+    });
+    if (others === 0) {
+      throw conflict(
+        "This is the last active Super Admin. Promote someone else before removing this role.",
+      );
+    }
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const after = await tx.user.update({
+      where: { id: input.userId },
+      data: { globalRole: input.globalRole },
+      select: { id: true, name: true, email: true, globalRole: true, accountStatus: true },
+    });
+
+    await writeAudit(tx, {
+      actorUserId: actor.userId,
+      action: "ROLE_CHANGED",
+      entityType: "User",
+      entityId: after.id,
+      before: { globalRole: before.globalRole },
+      after: { globalRole: after.globalRole },
+      reason:
+        input.reason ??
+        (input.globalRole === "SUPER_ADMIN"
+          ? "Granted Super Admin"
+          : "Super Admin role removed"),
+    });
+
+    return after;
   });
 }

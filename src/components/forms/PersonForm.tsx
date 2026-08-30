@@ -28,6 +28,8 @@ export function PersonForm({
 }) {
   const [state, formAction] = useActionState<PersonFormState, FormData>(action, {});
   const [copied, setCopied] = useState(false);
+  // Controlled so the warning can appear the moment the box is ticked.
+  const [superAdmin, setSuperAdmin] = useState(false);
 
   // Success. The link is always shown: as the delivery method when email is not
   // configured, and as a backup when it is.
@@ -172,6 +174,31 @@ export function PersonForm({
         )}
         <Hint>A person can belong to more than one venture.</Hint>
       </fieldset>
+
+      <div className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <input
+            type="checkbox"
+            name="makeSuperAdmin"
+            checked={superAdmin}
+            onChange={(e) => setSuperAdmin(e.target.checked)}
+            className="mt-0.5 h-3.5 w-3.5 accent-blue-600"
+          />
+          <span>Invite as Super Admin</span>
+        </label>
+        {superAdmin ? (
+          <p
+            role="alert"
+            className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            Whoever opens this invitation gets full control — payroll, every pay rate,
+            and the ability to remove your own Super Admin access. Check the address
+            carefully; it cannot be undone from here once they accept.
+          </p>
+        ) : (
+          <Hint>Leave this off unless the person is running the system with you.</Hint>
+        )}
+      </div>
 
       {state.error && (
         <div
