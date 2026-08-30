@@ -82,19 +82,11 @@ npx prisma migrate deploy
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host ""
-Write-Host "==> First Super Admin" -ForegroundColor Yellow
-Write-Host "This is your login for the app - not the database password."
-$adminSecure = Read-Host "password for gbgsweden2020@gmail.com (min 12 chars)" -AsSecureString
-$env:SEED_SUPER_ADMIN_PASSWORD = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-  [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminSecure))
-
-try {
-  npm run db:seed
-  if ($LASTEXITCODE -ne 0) { exit 1 }
-}
-finally {
-  Remove-Item Env:\SEED_SUPER_ADMIN_PASSWORD -ErrorAction SilentlyContinue
-}
+Write-Host "==> Seeding" -ForegroundColor Yellow
+# The seed sets no password: it prints an invitation link for the first Super
+# Admin, who chooses their own.
+npm run db:seed
+if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host ""
 Write-Host "Done. Portfolio Ops is on local PostgreSQL at localhost:$Port." -ForegroundColor Green
