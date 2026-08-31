@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireActiveActor } from "@/lib/auth/actor";
 import { listPeoplePaged } from "@/modules/people/person.service";
-import { hoursReport } from "@/modules/reports/report.service";
+import { hoursReport, todayAttendanceByPerson } from "@/modules/reports/report.service";
 import { formatMinutes } from "@/lib/money/efficiency";
 import { listVentures } from "@/modules/ventures/venture.service";
 import { isSuperAdmin } from "@/lib/permissions/types";
@@ -41,6 +41,11 @@ export default async function PeoplePage({
     // have they done" in one place rather than sending you to Reports.
     hoursReport(actor, { ventureId: params.venture }),
   ]);
+
+  // Where each person is today. Account status answers "can they sign in";
+  // this answers "are they working", which is the question a directory is
+  // usually being asked.
+  const today = await todayAttendanceByPerson(actor);
 
   // hoursReport returns a row per person PER VENTURE; the directory lists a
   // person once, so fold them together.
@@ -187,7 +192,8 @@ export default async function PeoplePage({
                 <th className="pb-2 pr-4 font-medium">Ventures</th>
                 <th className="pb-2 pr-4 text-right font-medium">Logged</th>
                 <th className="pb-2 pr-4 text-right font-medium">Approved</th>
-                <th className="pb-2 pr-4 font-medium">Status</th>
+                <th className="pb-2 pr-4 font-medium">Today</th>
+                <th className="pb-2 pr-4 font-medium">Account</th>
                 {admin && <th className="pb-2 font-medium">Actions</th>}
               </tr>
             </thead>
@@ -241,6 +247,9 @@ export default async function PeoplePage({
                     {workByPerson.get(p.personId)?.approvedMinutes
                       ? formatMinutes(workByPerson.get(p.personId)!.approvedMinutes)
                       : "—"}
+                  </td>
+                  <td className="py-3 pr-4">
+                    <TodayCell entry={today.get(p.personId)} />
                   </td>
                   <td className="py-3 pr-4">
                     <Badge
@@ -312,5 +321,43 @@ export default async function PeoplePage({
         </div>
       )}
     </>
+  );
+}
+
+const ATTENDANCE_TONE = {
+  PRESENT: "green",
+  REMOTE: "blue",
+  ON_LEAVE: "neutral",
+  ABSENT: "red",
+} as const;
+
+/**
+ * Today's attendance for one person.
+ *
+ * No log at all is not the same as being absent — it means the day has not
+ * been filled in yet — so it reads "not submitted" rather than guessing.
+ */
+function TodayCell({
+  entry,
+}: {
+  entry: { status: string | null; submitted: boolean } | undefined;
+}) {
+  if (!entry?.status) {
+    return <span className="text-xs text-zinc-400 dark:text-zinc-600">Not submitted</span>;
+  }
+
+  const tone = ATTENDANCE_TONE[entry.status as keyof typeof ATTENDANCE_TONE] ?? "neutral";
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <Badge tone={tone}>{entry.status.toLowerCase().replace("_", " ")}</Badge>
+      {!entry.submitted && (
+        <span
+          className="text-[10px] text-zinc-400 dark:text-zinc-600"
+          title="Recorded but not yet submitted for approval"
+        >
+          draft
+        </span>
+      )}
+    </span>
   );
 }

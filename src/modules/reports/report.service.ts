@@ -5,6 +5,7 @@ import { aggregateEfficiency, calculateEfficiency } from "@/lib/money/efficiency
 import {
   toPrismaDate,
   countWorkingDays,
+  currentBusinessDate,
   type BusinessDate,
 } from "@/lib/timezone/businessDate";
 
@@ -490,8 +491,6 @@ export async function attendanceSnapshot(
     select: { id: true, timezone: true },
   });
 
-  const { currentBusinessDate } = await import("@/lib/timezone/businessDate");
-
   let present = 0;
   let remote = 0;
   let onLeave = 0;
@@ -630,4 +629,59 @@ export function toCsv(rows: Record<string, unknown>[], columns: { key: string; l
 
 export function isSuperAdminActor(actor: Actor): boolean {
   return isSuperAdmin(actor);
+}
+
+export type TodayAttendance = {
+  /** PRESENT | REMOTE | ON_LEAVE | ABSENT, or null when nothing was submitted. */
+  status: string | null;
+  /** Whether the day has been submitted for approval yet. */
+  submitted: boolean;
+};
+
+/**
+ * Where each person is today, keyed by personId (§9).
+ *
+ * The People directory shows account status — whether someone can sign in —
+ * which is a different question from whether they are working today. This
+ * answers the second one so both can be shown side by side.
+ *
+ * A person in several ventures has a log per venture; the first submitted one
+ * wins, since "present in one venture, absent in another" on the same day is a
+ * data problem rather than something a directory column should try to express.
+ */
+export async function todayAttendanceByPerson(
+  actor: Actor,
+  businessDate?: BusinessDate,
+): Promise<Map<string, TodayAttendance>> {
+  // null/undefined means "every venture" (Super Admin); an empty array means
+  // this actor is scoped to nothing.
+  const ventureIds = resolveVentureIds(actor);
+  if (ventureIds !== null && ventureIds?.length === 0) return new Map();
+
+  const ventures = await prisma.venture.findMany({
+    where: { archivedAt: null, ...(ventureIds ? { id: { in: ventureIds } } : {}) },
+    select: { id: true, timezone: true },
+  });
+
+  const out = new Map<string, TodayAttendance>();
+
+  for (const venture of ventures) {
+    const date = businessDate ?? currentBusinessDate(venture.timezone);
+
+    const logs = await prisma.dailyLog.findMany({
+      where: { ventureId: venture.id, businessDate: toPrismaDate(date) },
+      select: { personId: true, attendanceStatus: true, status: true },
+    });
+
+    for (const log of logs) {
+      const submitted = log.status !== "DRAFT";
+      const existing = out.get(log.personId);
+      // Prefer a submitted day over a draft one when someone spans ventures.
+      if (!existing || (submitted && !existing.submitted)) {
+        out.set(log.personId, { status: log.attendanceStatus, submitted });
+      }
+    }
+  }
+
+  return out;
 }

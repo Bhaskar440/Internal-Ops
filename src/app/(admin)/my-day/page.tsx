@@ -5,6 +5,8 @@ import { listTasks } from "@/modules/tasks/task.service";
 import { PageHeader, EmptyState } from "@/components/ui/Card";
 import { DayVentureSection, type DaySection } from "@/components/forms/DayVentureSection";
 import { formatMinutes } from "@/lib/money/efficiency";
+import { currentBusinessDate } from "@/lib/timezone/businessDate";
+import { DayNavigator } from "@/components/forms/DayNavigator";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "My day" };
@@ -54,6 +56,14 @@ export default async function MyDayPage({
 
   const dayTotal = sections.reduce((sum, s) => sum + s.totalMinutes, 0);
 
+  // Today, as the venture reckons it. getMyDay already resolves the business
+  // date in the venture's timezone, so asking it for the default day gives the
+  // right answer at 01:00 in Asia/Kolkata, where UTC is still on yesterday.
+  const todayForActor = currentBusinessDate(
+    logs[0]?.ventureTimezone ?? "Asia/Kolkata",
+  );
+  const shownDate = sections[0]?.businessDate ?? params.date ?? todayForActor;
+
   return (
     <>
       <PageHeader
@@ -64,6 +74,8 @@ export default async function MyDayPage({
             : "Record what you worked on today."
         }
       />
+
+      <DayNavigator businessDate={shownDate} today={todayForActor} />
 
       {activeTimer && (
         <div className="mb-5 rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm dark:border-blue-900 dark:bg-blue-950/30">

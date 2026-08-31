@@ -35,6 +35,8 @@ export type DailyLogView = {
   ventureId: string;
   ventureName: string;
   ventureTagColor: string;
+  /** The venture's timezone, so callers can reckon "today" the same way. */
+  ventureTimezone: string;
   businessDate: BusinessDate;
   attendanceStatus: string;
   status: string;
@@ -114,6 +116,7 @@ function buildView(log: LogRow, entries: TimeEntryView[], now: Date): DailyLogVi
     ventureId: log.ventureId,
     ventureName: log.venture.name,
     ventureTagColor: log.venture.tagColor,
+    ventureTimezone: log.venture.timezone,
     businessDate,
     attendanceStatus: log.attendanceStatus,
     status: log.status,

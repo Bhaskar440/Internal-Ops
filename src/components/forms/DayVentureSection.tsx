@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/Card";
 import { LiveElapsed } from "@/components/ui/LiveElapsed";
 import { formatMinutes } from "@/lib/money/efficiency";
 import {
-  startTimerAction,
   stopTimerAction,
   saveManualEntryAction,
   deleteEntryAction,
@@ -233,25 +232,24 @@ export function DayVentureSection({
         {/* Actions */}
         {!locked && (
           <div className="flex flex-wrap gap-2 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-            {hasRunningTimer ? (
+            {/*
+              The day is a timesheet: hours are typed against a task, submitted,
+              and approved. The timer remains in the service layer and still
+              stops a running one, so a timer started before this change can be
+              closed out, but it is no longer offered as a way to record time.
+            */}
+            {hasRunningTimer && (
               <Button
                 variant="danger"
                 disabled={pending}
                 onClick={() => run(() => stopTimerAction())}
               >
-                Stop timer
-              </Button>
-            ) : (
-              <Button
-                disabled={pending}
-                onClick={() => run(() => startTimerAction(section.ventureId))}
-              >
-                Start timer
+                Stop running timer
               </Button>
             )}
 
-            <Button variant="secondary" onClick={() => setShowManual((v) => !v)}>
-              {showManual ? "Cancel" : "Add hours manually"}
+            <Button onClick={() => setShowManual((v) => !v)}>
+              {showManual ? "Cancel" : "Add hours"}
             </Button>
 
             <div className="flex-1" />
