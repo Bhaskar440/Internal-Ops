@@ -96,6 +96,7 @@ async function submitADay(): Promise<string> {
   await saveManualEntry(employeeInVenture(), {
     taskId: ids.task,
     minutes: 60,
+      note: "Worked on the assigned task",
     businessDate: today,
   });
   const days = await getMyDay(employee(), today);
@@ -188,6 +189,7 @@ describe("the outcome comes back", () => {
     const empOther: Actor = { ...employee(), memberships: new Map([[other.id, "MEMBER"]]) };
     await saveManualEntry(employeeInVenture(other.id, `LN2 ${S}`, `ln2-${S}`), {
       minutes: 30,
+      note: "Worked on the assigned task",
       businessDate: today,
     });
     const days = await getMyDay(empOther, today);

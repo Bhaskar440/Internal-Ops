@@ -63,7 +63,7 @@ const logSelect = {
   submittedAt: true,
   approvedAt: true,
   rejectionReason: true,
-  person: { select: { user: { select: { name: true } } } },
+  person: { select: { user: { select: { name: true, email: true } } } },
   venture: {
     select: {
       id: true,
@@ -274,15 +274,25 @@ async function approverPersonIds(
   ventureId: string,
   submitterPersonId: string,
 ): Promise<string[]> {
-  const managers = await tx.ventureMembership.findMany({
-    where: { ventureId, accessRole: "MANAGER", leftAt: null },
-    select: { personId: true },
-  });
-
   const admins = await tx.person.findMany({
     where: { user: { globalRole: "SUPER_ADMIN", accountStatus: "ACTIVE" } },
     select: { id: true },
   });
+
+  // A manager's own day escalates: it goes to the Super Admin rather than
+  // sideways to a peer manager, who has no standing to judge it. Everyone
+  // else's day goes to the managers of their venture.
+  const submitterIsManager = await tx.ventureMembership.findFirst({
+    where: { ventureId, personId: submitterPersonId, accessRole: "MANAGER", leftAt: null },
+    select: { id: true },
+  });
+
+  const managers = submitterIsManager
+    ? []
+    : await tx.ventureMembership.findMany({
+        where: { ventureId, accessRole: "MANAGER", leftAt: null },
+        select: { personId: true },
+      });
 
   const ids = new Set([...managers.map((m) => m.personId), ...admins.map((a) => a.id)]);
   ids.delete(submitterPersonId);
@@ -468,6 +478,9 @@ export async function countPendingApprovals(actor: Actor): Promise<number> {
     where: {
       status: "SUBMITTED",
       ...(managed ? { ventureId: { in: managed } } : {}),
+      // Must match listPendingApprovals exactly, or the badge promises rows
+      // the queue does not show.
+      ...(managed && actor.personId ? { personId: { not: actor.personId } } : {}),
     },
   });
 }
@@ -485,6 +498,10 @@ export async function listPendingApprovals(actor: Actor): Promise<DailyLogView[]
     where: {
       status: "SUBMITTED",
       ...(managed ? { ventureId: { in: managed } } : {}),
+      // A manager cannot approve their own day, so listing it here would leave
+      // a row nobody in this queue can act on. It escalates instead: a Super
+      // Admin's queue is unfiltered, so their own day appears there.
+      ...(managed && actor.personId ? { personId: { not: actor.personId } } : {}),
     },
     select: logSelect,
     // Oldest first: the queue is worked through, not browsed. Newest-first
@@ -576,3 +593,83 @@ function previousBusinessDate(timezone: string, now: Date): BusinessDate {
   const yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
   return currentBusinessDate(timezone, yesterday);
 }
+
+export type WorkDiaryEntry = {
+  taskTitle: string | null;
+  minutes: number;
+  description: string | null;
+};
+
+export type WorkDiaryDay = {
+  logId: string;
+  personId: string;
+  personName: string;
+  personEmail: string;
+  ventureName: string;
+  ventureTagColor: string;
+  businessDate: BusinessDate;
+  attendanceStatus: string;
+  status: string;
+  totalMinutes: number;
+  entries: WorkDiaryEntry[];
+};
+
+/**
+ * Every person's written record of work over a period (§33).
+ *
+ * SUPER ADMIN ONLY, deliberately. An employee sees their own days and a manager
+ * sees their venture's in order to approve them; this is the only view that
+ * crosses both people and weeks at once, which is a different thing from
+ * approving a day and belongs to whoever owns the whole portfolio.
+ *
+ * The guard is here rather than in the page, so the restriction holds no matter
+ * who calls it.
+ */
+export async function workDiary(
+  actor: Actor,
+  filters: { from: BusinessDate; to: BusinessDate; personId?: string; ventureId?: string },
+): Promise<WorkDiaryDay[]> {
+  if (!isSuperAdmin(actor)) {
+    throw forbidden("The work diary is available to administrators only.");
+  }
+
+  const logs = await prisma.dailyLog.findMany({
+    where: {
+      businessDate: { gte: toPrismaDate(filters.from), lte: toPrismaDate(filters.to) },
+      ...(filters.personId ? { personId: filters.personId } : {}),
+      ...(filters.ventureId ? { ventureId: filters.ventureId } : {}),
+    },
+    select: logSelect,
+    orderBy: [{ businessDate: "desc" }, { personId: "asc" }],
+    take: WORK_DIARY_LIMIT,
+  });
+
+  if (logs.length === 0) return [];
+
+  // One query for every log's entries rather than one per log.
+  const byLog = await listEntriesForLogs(logs.map((l) => l.id));
+
+  return logs.map((log) => {
+    const entries = byLog.get(log.id) ?? [];
+    return {
+      logId: log.id,
+      personId: log.personId,
+      personName: log.person.user.name,
+      personEmail: log.person.user.email,
+      ventureName: log.venture.name,
+      ventureTagColor: log.venture.tagColor,
+      businessDate: fromPrismaDate(log.businessDate),
+      attendanceStatus: log.attendanceStatus,
+      status: log.status,
+      totalMinutes: entries.reduce((sum, e) => sum + (e.durationSeconds ?? 0) / 60, 0),
+      entries: entries.map((e) => ({
+        taskTitle: e.taskTitle,
+        minutes: Math.round((e.durationSeconds ?? 0) / 60),
+        description: e.note,
+      })),
+    };
+  });
+}
+
+/** A month across a small team is a few hundred rows; cap it rather than stream. */
+export const WORK_DIARY_LIMIT = 1000;

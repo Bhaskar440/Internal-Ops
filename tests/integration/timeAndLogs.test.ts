@@ -169,16 +169,18 @@ describe("daily log does not duplicate time (§27)", () => {
     const actor = ventureActor(baseActor(), "MEMBER");
     const date = "2026-08-20";
 
-    const created = await saveManualEntry(actor, { businessDate: date, minutes: 120 });
+    const created = await saveManualEntry(actor, { businessDate: date, minutes: 120, note: "Worked on the assigned task" });
     const edited1 = await saveManualEntry(actor, {
       entryId: created.id,
       businessDate: date,
       minutes: 180,
+      note: "Worked on the assigned task",
     });
     const edited2 = await saveManualEntry(actor, {
       entryId: created.id,
       businessDate: date,
       minutes: 90,
+      note: "Worked on the assigned task",
     });
 
     expect(edited1.id).toBe(created.id);
@@ -195,9 +197,9 @@ describe("daily log does not duplicate time (§27)", () => {
     const actor = ventureActor(baseActor(), "MEMBER");
     const date = "2026-08-21";
 
-    await saveManualEntry(actor, { businessDate: date, minutes: 180 });
-    await saveManualEntry(actor, { businessDate: date, minutes: 120 });
-    await saveManualEntry(actor, { businessDate: date, minutes: 120 });
+    await saveManualEntry(actor, { businessDate: date, minutes: 180, note: "Worked on the assigned task" });
+    await saveManualEntry(actor, { businessDate: date, minutes: 120, note: "Worked on the assigned task" });
+    await saveManualEntry(actor, { businessDate: date, minutes: 120, note: "Worked on the assigned task" });
 
     const logs = await getMyDay(baseActor(), date);
     const log = logs.find((l) => l.ventureId === ids.venture);
@@ -235,7 +237,8 @@ describe("task actual hours come from time entries (§23)", () => {
     await saveManualEntry(employee, {
       taskId: task.id,
       businessDate: "2026-08-22",
-      minutes: 600, // 10h
+      minutes: 600,
+      note: "Worked on the assigned task", // 10h
     });
 
     const tasks = await listTasks(baseActor(), { ventureId: ids.venture });
@@ -284,7 +287,7 @@ describe("approval lifecycle (§28, §31)", () => {
   it("submits, approves, and then locks the day against employee edits", async () => {
     const date = TODAY;
     const employee = ventureActor(baseActor(), "MEMBER");
-    await saveManualEntry(employee, { businessDate: date, minutes: 240 });
+    await saveManualEntry(employee, { businessDate: date, minutes: 240, note: "Worked on the assigned task" });
 
     const logs = await getMyDay(baseActor(), date);
     const log = logs.find((l) => l.ventureId === ids.venture)!;
@@ -307,7 +310,7 @@ describe("approval lifecycle (§28, §31)", () => {
 
     // Once approved, the employee can no longer add time to that day.
     await expect(
-      saveManualEntry(employee, { businessDate: date, minutes: 60 }),
+      saveManualEntry(employee, { businessDate: date, minutes: 60, note: "Worked on the assigned task" }),
     ).rejects.toSatisfy((e: unknown) => isAppError(e) && e.code === "EDIT_WINDOW_CLOSED");
   });
 
@@ -322,7 +325,7 @@ describe("approval lifecycle (§28, §31)", () => {
       "MANAGER",
     );
 
-    await saveManualEntry(manager, { businessDate: date, minutes: 120 });
+    await saveManualEntry(manager, { businessDate: date, minutes: 120, note: "Worked on the assigned task" });
     const logs = await getMyDay(
       baseActor({
         userId: ids.mgrUser,
@@ -353,7 +356,7 @@ describe("approval lifecycle (§28, §31)", () => {
     });
 
     const employee = ventureActor(baseActor(), "MEMBER");
-    await saveManualEntry(employee, { businessDate: date, minutes: 360 });
+    await saveManualEntry(employee, { businessDate: date, minutes: 360, note: "Worked on the assigned task" });
 
     const logs = await getMyDay(baseActor(), date);
     const log = logs.find((l) => l.ventureId === ids.venture)!;
@@ -520,6 +523,7 @@ describe("business date attribution (§22)", () => {
     const entry = await saveManualEntry(actor, {
       businessDate: "2026-08-28",
       minutes: 60,
+      note: "Worked on the assigned task",
     });
 
     const row = await prisma.timeEntry.findUnique({

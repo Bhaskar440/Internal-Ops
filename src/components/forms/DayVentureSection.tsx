@@ -374,14 +374,21 @@ function ManualEntryForm({
           htmlFor={`n-${section.logId}`}
           className="mb-1.5 block text-xs font-medium text-zinc-600 dark:text-zinc-400"
         >
-          Note (optional)
+          What did you do? *
         </label>
-        <input
+        <textarea
           id={`n-${section.logId}`}
           name="note"
+          required
+          minLength={3}
+          maxLength={1000}
+          rows={2}
           className="w-full rounded-md border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          placeholder="What did you work on?"
+          placeholder="Reviewed the pricing page copy and rewrote the comparison table"
         />
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Your approver reads this to check the work matches the task.
+        </p>
       </div>
 
       {error && (

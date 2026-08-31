@@ -27,6 +27,7 @@ const NAV: NavItem[] = [
   { href: "/approvals", label: "Approvals", managerOnly: true },
   { href: "/people", label: "People" },
   { href: "/reports", label: "Reports", managerOnly: true },
+  { href: "/work-diary", label: "Work diary", adminOnly: true },
   { href: "/payroll", label: "Payroll", adminOnly: true },
   { href: "/hr", label: "HR", adminOnly: true },
   { href: "/ventures", label: "Ventures", adminOnly: true },

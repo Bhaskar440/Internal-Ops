@@ -298,6 +298,17 @@ export async function saveManualEntry(
   if (input.minutes <= 0) throw conflict("Enter more than zero minutes.");
   if (input.minutes > 24 * 60) throw conflict("A single entry cannot exceed 24 hours.");
 
+  // The day is a record of work, not a set of numbers. Without a description
+  // an approver has nothing to judge the hours against, and efficiency becomes
+  // a comparison between an estimate and an unexplained total.
+  const description = input.note?.trim() ?? "";
+  if (description.length < 3) {
+    throw conflict("Say what you worked on. An approver needs to know what these hours were for.");
+  }
+  if (description.length > 1000) {
+    throw conflict("That description is too long — keep it under 1000 characters.");
+  }
+
   if (input.taskId) {
     const task = await prisma.task.findUnique({
       where: { id: input.taskId },
@@ -339,7 +350,7 @@ export async function saveManualEntry(
           startedAt,
           endedAt,
           durationSeconds: input.minutes * 60,
-          note: input.note,
+          note: description,
           dailyLogId,
         },
         select: entrySelect,
@@ -370,7 +381,7 @@ export async function saveManualEntry(
         endedAt,
         durationSeconds: input.minutes * 60,
         businessDate: toPrismaDate(input.businessDate),
-        note: input.note,
+        note: description,
       },
       select: entrySelect,
     });
