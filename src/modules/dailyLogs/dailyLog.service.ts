@@ -307,6 +307,15 @@ export async function submitLog(actor: Actor, logId: string): Promise<DailyLogVi
     );
   }
 
+  // Submitting asserts the day is complete. A running timer contradicts that:
+  // its hours are not yet in the total, and would land after a manager had
+  // already approved the day.
+  if (view.entries.some((e) => e.running)) {
+    throw conflict(
+      "A timer is still running on this day. Stop it first so its hours are included.",
+    );
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
     const after = await tx.dailyLog.update({
       where: { id: logId },

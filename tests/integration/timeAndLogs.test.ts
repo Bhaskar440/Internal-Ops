@@ -368,6 +368,34 @@ describe("approval lifecycle (§28, §31)", () => {
       (e: unknown) => isAppError(e) && e.code === "CONFLICT",
     );
   });
+
+  it("refuses to submit a day with a timer still running", async () => {
+    const date = currentBusinessDate("Asia/Kolkata");
+    const employee = ventureActor(baseActor(), "MEMBER");
+
+    // A running timer's hours are not in the total yet, so submitting would
+    // have them land after a manager had already approved the day.
+    await startTimer(employee, { note: "still going" });
+
+    const logs = await getMyDay(baseActor(), date);
+    const log = logs.find((l) => l.ventureId === ids.venture)!;
+
+    // The previous test left this day marked ABSENT; reset it so the running
+    // timer is the only reason a submit could be refused.
+    await prisma.dailyLog.update({
+      where: { id: log.id },
+      data: { attendanceStatus: "PRESENT" },
+    });
+
+    await expect(submitLog(baseActor(), log.id)).rejects.toSatisfy(
+      (e: unknown) => isAppError(e) && e.code === "CONFLICT",
+    );
+
+    // Once stopped, the same day submits.
+    await stopTimer(employee);
+    const after = await submitLog(baseActor(), log.id);
+    expect(after.status).toBe("SUBMITTED");
+  });
 });
 
 describe("approval queue ordering (§31)", () => {
