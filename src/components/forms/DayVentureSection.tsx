@@ -38,6 +38,10 @@ export type DaySection = {
   totalMinutes: number;
   editable: boolean;
   attendanceConflict: boolean;
+  /** Set when a manager sent the day back; shown so it can be corrected. */
+  rejectionReason: string | null;
+  /** ISO timestamp after which the employee can no longer edit this day. */
+  editWindowClosesAt: string;
   entries: DayEntry[];
   tasks: { id: string; title: string }[];
 };
@@ -114,6 +118,10 @@ export function DayVentureSection({
             className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
           >
             Returned by your manager. Make the changes and submit again.
+            {/* rejectLog requires a reason; showing it is the point of asking. */}
+            {section.rejectionReason && (
+              <p className="mt-1 font-medium">{section.rejectionReason}</p>
+            )}
           </div>
         )}
 
@@ -228,6 +236,12 @@ export function DayVentureSection({
             {error}
           </div>
         )}
+
+        {/*
+          A read-only day previously just showed no buttons, which reads as
+          broken rather than as a rule. Say which rule, and what to do next.
+        */}
+        {locked && <LockedNotice section={section} />}
 
         {/* Actions */}
         {!locked && (
@@ -382,5 +396,74 @@ function ManualEntryForm({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Why this day cannot be edited, and what to do about it.
+ *
+ * Four different situations lock a day, and they call for different actions:
+ * waiting on a manager, already approved, already paid, or past the cutoff.
+ * Collapsing them into one message would leave someone stuck on the only one
+ * they can actually resolve.
+ */
+function LockedNotice({ section }: { section: DaySection }) {
+  const windowClosed = new Date(section.editWindowClosesAt) < new Date();
+
+  const { tone, title, body } = (() => {
+    switch (section.status) {
+      case "SUBMITTED":
+        return {
+          tone: "blue" as const,
+          title: "Waiting for approval",
+          body: "This day is with your manager. You cannot change it while they are reviewing it — ask them to send it back if something is wrong.",
+        };
+      case "APPROVED":
+        return {
+          tone: "green" as const,
+          title: "Approved",
+          body: "These hours are approved and now count towards reporting. A manager can still correct them, which is recorded in the audit log.",
+        };
+      case "LOCKED":
+        return {
+          tone: "neutral" as const,
+          title: "Locked by payroll",
+          body: "This day is part of a locked payroll run and can no longer change. A correction has to be raised as a payroll adjustment instead.",
+        };
+      default:
+        return windowClosed
+          ? {
+              tone: "amber" as const,
+              title: "The editing window has closed",
+              body: "Too much time has passed since this day for you to change it yourself. Ask a manager to record the correction for you.",
+            }
+          : {
+              tone: "neutral" as const,
+              title: "This day is read-only",
+              body: "It cannot be edited at the moment.",
+            };
+    }
+  })();
+
+  const STYLES = {
+    blue: "border-blue-300 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200",
+    green:
+      "border-green-300 bg-green-50 text-green-900 dark:border-green-900 dark:bg-green-950/30 dark:text-green-200",
+    amber:
+      "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200",
+    neutral:
+      "border-zinc-300 bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300",
+  };
+
+  return (
+    <div className={`mt-4 rounded-md border px-3 py-2.5 text-sm ${STYLES[tone]}`}>
+      <p className="font-medium">{title}</p>
+      <p className="mt-0.5 opacity-90">{body}</p>
+      {section.rejectionReason && (
+        <p className="mt-1.5 opacity-90">
+          <span className="font-medium">Manager&rsquo;s note:</span> {section.rejectionReason}
+        </p>
+      )}
+    </div>
   );
 }

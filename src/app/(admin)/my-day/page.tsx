@@ -37,6 +37,10 @@ export default async function MyDayPage({
     totalMinutes: log.totalMinutes,
     editable: log.editable,
     attendanceConflict: log.attendanceConflict,
+    // Needed to explain WHY a day is read-only, rather than silently hiding
+    // the controls and leaving the person to guess.
+    rejectionReason: log.rejectionReason,
+    editWindowClosesAt: log.editWindowClosesAt.toISOString(),
     entries: log.entries.map((e) => ({
       id: e.id,
       taskId: e.taskId,
