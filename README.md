@@ -15,18 +15,53 @@ from the same row.
 
 ---
 
+## Stack
+
+Next.js 16 (App Router) · React 19 · TypeScript · PostgreSQL 16 · Prisma 7 ·
+Auth.js v5 · Zod · Tailwind CSS 4 · Vitest · Luxon
+
+**188 tests** run against a real PostgreSQL database rather than mocks — a mocked
+client happily accepts a query with no tenant filter, which is precisely the bug
+worth catching.
+
+## Design decisions worth reading
+
+- **The one-running-timer rule is a database constraint**, not an application
+  check — a partial unique index on `time_entries`. Two concurrent starts produce
+  one winner and one clean domain error, regardless of what the code does.
+- **No stored totals.** A task's actual hours are always `SUM(duration_seconds)`
+  over its entries; the daily log has no `total_hours` column. Stored totals
+  drift from the rows they claim to summarise.
+- **Cross-tenant access is a compile-time error.** Scoped repository methods take
+  `ventureId` as a required argument and no unscoped `findById` exists, so a
+  route that forgets to scope a query fails to typecheck.
+- **Money is `Decimal(18,4)`, durations are integer minutes** — never floating
+  point. Summing across currencies throws rather than coercing.
+- **Locked payroll is never rewritten.** Corrections settle forward into the next
+  run as adjustments, and every pay line snapshots the rate used, so a later
+  raise cannot alter what was already paid.
+- **Audit rows are written in the same transaction as the change they describe**,
+  so a rolled-back change can never leave a phantom entry.
+
+---
+
 ## Running it locally
 
-**Prerequisites:** Node 22+, Docker Desktop (must be running).
+**Prerequisites:** Node 22+ and a PostgreSQL 16 database. Any will do — a hosted
+one (Neon, Supabase), a local install, or the bundled `docker-compose.yml`.
 
 ```bash
 npm install
-cp .env.example .env          # then set AUTH_SECRET (see below)
-npm run db:setup              # create the role + databases on local Postgres 16
-npm run db:migrate            # apply migrations
-npm run db:seed               # first Super Admin + three ventures
+cp .env.example .env          # set DATABASE_URL and AUTH_SECRET (see below)
+npx prisma migrate deploy     # create the 23 tables
+npm run db:seed               # three ventures + an invite link for the first admin
+npm run db:demo               # optional: demo people, tasks, hours, a payroll run
 npm run dev                   # http://localhost:3000
 ```
+
+The seed deliberately creates the first administrator **without a password** and
+prints an invitation link, so nobody running the setup ever holds the credential
+for the account that controls payroll.
 
 Generate a secret for `.env`:
 
