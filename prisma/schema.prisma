@@ -13,8 +13,8 @@
 //     never hard-deleted (§47).
 
 generator client {
-  provider        = "prisma-client"
-  output          = "../src/generated/prisma"
+  provider        = "prisma-client-js"
+  output          = "../src/generated/prisma/client"
   previewFeatures = ["partialIndexes"]
 }
 
