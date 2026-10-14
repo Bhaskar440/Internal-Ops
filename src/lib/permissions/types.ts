@@ -1,4 +1,4 @@
-import type { AccountStatus, GlobalRole, VentureAccessRole } from "@/generated/prisma/enums";
+import type { AccountStatus, GlobalRole, VentureAccessRole } from "@/generated/prisma/client";
 
 /**
  * The authenticated caller, resolved server-side on every request (§51).

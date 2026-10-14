@@ -1,7 +1,7 @@
 import { prisma, type PrismaTransactionClient } from "@/lib/db/client";
 import { forbidden, notFound } from "@/lib/errors/appError";
 import { isSuperAdmin, type Actor } from "@/lib/permissions/types";
-import type { NotificationKind } from "@/generated/prisma/enums";
+import type { NotificationKind } from "@/generated/prisma/client";
 
 /**
  * In-app notifications (§59 Phase 1).
