@@ -12,7 +12,7 @@ import { defineConfig } from "prisma/config";
 const url =
   process.env.PRISMA_TARGET_TEST === "1"
     ? process.env.TEST_DATABASE_URL
-    : process.env.DATABASE_URL;
+    : (process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL);
 
 if (!url) {
   throw new Error(
