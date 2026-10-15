@@ -18,6 +18,7 @@ import {
 } from "@/modules/people/person.service";
 import { isAppError } from "@/lib/errors/appError";
 import { sendInvitationEmail, isEmailConfigured } from "@/lib/email/mailer";
+import { getBaseUrl } from "@/lib/base-url";
 
 export type PersonFormState = {
   error?: string;
@@ -64,7 +65,7 @@ export async function createPersonAction(
     revalidatePath("/people");
     revalidatePath("/");
 
-    const base = process.env.AUTH_URL ?? "http://localhost:3000";
+    const base = await getBaseUrl();
     const inviteUrl = `${base}/invite/${result.inviteToken}`;
 
     // Email if a provider is configured. A send failure must not undo the
